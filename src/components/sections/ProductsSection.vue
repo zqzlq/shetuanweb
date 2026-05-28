@@ -48,7 +48,7 @@
                   <span v-for="t in project.techStack" :key="t" class="tag">{{ t }}</span>
                 </div>
                 <div v-if="project.contributors?.length" class="card-contributors">
-                  <div v-for="c in project.contributors.slice(0, 5)" :key="c.name" class="contrib-avatar" :style="{ background: avatarColor(c.name) }" :title="c.name + (c.role ? ' · ' + c.role : '')">{{ c.name[0] }}</div>
+                  <div v-for="c in project.contributors.slice(0, 5)" :key="c.name" class="contrib-avatar" :style="c.avatar ? {} : { background: avatarColor(c.name) }" :title="c.name + (c.role ? ' · ' + c.role : '')"><img v-if="c.avatar" :src="c.avatar" :alt="c.name" /><span v-else>{{ c.name[0] }}</span></div>
                   <span v-if="project.contributors.length > 5" class="contrib-more">+{{ project.contributors.length - 5 }}</span>
                 </div>
               </div>
@@ -367,7 +367,9 @@ function avatarColor(name) {
   border: 2px solid #fff;
   margin-left: -6px;
   flex-shrink: 0;
+  overflow: hidden;
 }
+.contrib-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .contrib-avatar:first-child { margin-left: 0; }
 

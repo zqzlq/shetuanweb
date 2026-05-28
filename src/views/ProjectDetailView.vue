@@ -51,7 +51,7 @@
             <h2>贡献者</h2>
             <div class="contributors-grid">
               <div v-for="c in project.contributors" :key="c.name" class="contributor">
-                <div class="contributor-avatar" :style="{ background: avatarColor(c.name) }">{{ c.name[0] }}</div>
+                <div class="contributor-avatar" :style="c.avatar ? {} : { background: avatarColor(c.name) }"><img v-if="c.avatar" :src="c.avatar" :alt="c.name" /><span v-else>{{ c.name[0] }}</span></div>
                 <div class="contributor-info">
                   <strong>{{ c.name }}</strong>
                   <span>{{ c.role }}</span>
@@ -282,6 +282,9 @@ function avatarColor(name) {
   font-size: 16px;
   color: #fff;
   flex-shrink: 0;
+  overflow: hidden;
+}
+.contributor-avatar img { width: 100%; height: 100%; object-fit: cover;
 }
 
 .contributor-info strong {

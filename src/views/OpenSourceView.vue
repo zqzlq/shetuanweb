@@ -41,7 +41,7 @@
         <h2 class="section-title">{{ page.content.sections.contributorsTitle }}</h2>
         <div class="contributors-grid">
           <div v-for="c in visibleContributors" :key="c.name" class="contributor">
-            <div class="contributor-avatar" :style="{ background: avatarColor(c.name) }">{{ c.name[0] }}</div>
+            <div class="contributor-avatar" :style="c.avatar ? {} : { background: avatarColor(c.name) }"><img v-if="c.avatar" :src="c.avatar" :alt="c.name" /><span v-else>{{ c.name[0] }}</span></div>
             <strong>{{ c.name }}</strong>
             <span>{{ c.commits }} commits</span>
           </div>
@@ -121,7 +121,8 @@ function avatarColor(name) {
 /* 贡献者 */
 .contributors-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 24px; margin-bottom: 24px; }
 .contributor { text-align: center; }
-.contributor-avatar { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-weight: 700; font-size: 18px; color: #fff; margin: 0 auto 8px; }
+.contributor-avatar { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: var(--font-heading); font-weight: 700; font-size: 18px; color: #fff; margin: 0 auto 8px; overflow: hidden; }
+.contributor-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .contributor strong { display: block; font-size: 14px; }
 .contributor span { font-size: 12px; color: var(--text-muted); }
 
