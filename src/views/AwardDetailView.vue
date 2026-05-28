@@ -37,7 +37,7 @@
 
       <!-- Lightbox -->
       <Teleport to="body">
-        <div v-if="lightboxIndex >= 0" class="lightbox-overlay" @click.self="closeLightbox">
+        <div v-if="lightboxIndex >= 0" class="lightbox-overlay" @click.self="closeLightbox" @wheel.prevent="onWheel">
           <button class="lightbox-close" @click="closeLightbox" aria-label="关闭">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -45,13 +45,21 @@
             <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-prev" @click="prevImage" aria-label="上一张">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
-            <img :src="lightboxImages[lightboxIndex]" class="lightbox-img" alt="大图" />
+            <div class="lightbox-img-wrap" @mouseenter="zoomLevel > 1 ? '' : ''" @mousedown="onMouseDown" @mousemove="onMouseMove" @mouseup="onMouseUp" @mouseleave="onMouseUp">
+              <img :src="lightboxImages[lightboxIndex]" class="lightbox-img" alt="大图"
+                :style="{
+                  transform: 'scale(' + zoomLevel + ') translate(' + (zoomLevel > 1 ? panX / zoomLevel : 0) + 'px, ' + (zoomLevel > 1 ? panY / zoomLevel : 0) + 'px)',
+                  cursor: zoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in'
+                }"
+                @click="toggleZoom" />
+            </div>
             <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-next" @click="nextImage" aria-label="下一张">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
             </button>
           </div>
           <div class="lightbox-footer">
             <span class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ lightboxImages.length }}</span>
+            <span class="lightbox-zoom">{{ Math.round(zoomLevel * 100) }}%</span>
           </div>
         </div>
       </Teleport>
@@ -138,6 +146,11 @@ useScrollReveal()
 
 const lightboxIndex = ref(-1)
 const lightboxImages = ref([])
+const zoomLevel = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const isDragging = ref(false)
+const dragStart = ref({ x: 0, y: 0 })
 const trackRef = ref(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(true)
@@ -145,21 +158,60 @@ const canScrollRight = ref(true)
 function openLightbox(i) {
   lightboxImages.value = award.value?.screenshots || []
   lightboxIndex.value = i
+  resetView()
 }
 function openImageLightbox(url) {
   lightboxImages.value = [url, ...(award.value?.screenshots || [])]
   lightboxIndex.value = 0
+  resetView()
 }
-function closeLightbox() { lightboxIndex.value = -1; lightboxImages.value = [] }
-function prevImage() { if (lightboxImages.value.length) lightboxIndex.value = (lightboxIndex.value - 1 + lightboxImages.value.length) % lightboxImages.value.length }
-function nextImage() { if (lightboxImages.value.length) lightboxIndex.value = (lightboxIndex.value + 1) % lightboxImages.value.length }
+function closeLightbox() { lightboxIndex.value = -1; lightboxImages.value = []; resetView() }
+function resetView() { zoomLevel.value = 1; panX.value = 0; panY.value = 0 }
+function prevImage() { if (lightboxImages.value.length) { lightboxIndex.value = (lightboxIndex.value - 1 + lightboxImages.value.length) % lightboxImages.value.length; resetView() } }
+function nextImage() { if (lightboxImages.value.length) { lightboxIndex.value = (lightboxIndex.value + 1) % lightboxImages.value.length; resetView() } }
+
+function toggleZoom(e) {
+  if (zoomLevel.value === 1) zoomLevel.value = 2
+  else if (zoomLevel.value === 2) zoomLevel.value = 3
+  else resetView()
+}
+function onWheel(e) {
+  if (lightboxIndex.value < 0) return
+  e.preventDefault()
+  zoomLevel.value = Math.max(0.5, Math.min(5, zoomLevel.value + (e.deltaY > 0 ? -0.25 : 0.25)))
+  // 缩放时如果回到 1x，重置位置
+  if (zoomLevel.value === 1) { panX.value = 0; panY.value = 0 }
+}
+
+function onMouseDown(e) {
+  if (zoomLevel.value <= 1) return
+  isDragging.value = true
+  dragStart.value = { x: e.clientX - panX.value, y: e.clientY - panY.value }
+  e.preventDefault()
+}
+function onMouseMove(e) {
+  if (!isDragging.value) return
+  panX.value = e.clientX - dragStart.value.x
+  panY.value = e.clientY - dragStart.value.y
+}
+function onMouseUp() { isDragging.value = false }
 
 // 键盘导航
 function onKeydown(e) {
   if (lightboxIndex.value < 0) return
   if (e.key === 'Escape') closeLightbox()
-  if (e.key === 'ArrowLeft') prevImage()
-  if (e.key === 'ArrowRight') nextImage()
+function onKeydown(e) {
+  if (lightboxIndex.value < 0) return
+  if (e.key === 'Escape') closeLightbox()
+  if (e.key === 'ArrowLeft' && zoomLevel.value < 2) { prevImage() }
+  if (e.key === 'ArrowRight' && zoomLevel.value < 2) { nextImage() }
+  if (zoomLevel.value > 1) {
+    if (e.key === 'ArrowLeft') { panX.value += 60; e.preventDefault() }
+    if (e.key === 'ArrowRight') { panX.value -= 60; e.preventDefault() }
+    if (e.key === 'ArrowUp') { panY.value += 60; e.preventDefault() }
+    if (e.key === 'ArrowDown') { panY.value -= 60; e.preventDefault() }
+  }
+}
 }
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
@@ -543,13 +595,23 @@ function avatarColor(name) {
   gap: 12px;
   max-width: 92vw;
 }
-.lightbox-img {
+.lightbox-img-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   max-width: 85vw;
   max-height: 82vh;
   border-radius: 12px;
-  object-fit: contain;
   box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.lightbox-img {
+  max-width: 85vw;
+  max-height: 82vh;
+  object-fit: contain;
+  transition: transform 0.25s ease;
   user-select: none;
+  display: block;
 }
 .lightbox-nav {
   flex-shrink: 0;
@@ -571,8 +633,11 @@ function avatarColor(name) {
   bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
-.lightbox-counter {
+.lightbox-counter, .lightbox-zoom {
   color: rgba(255,255,255,0.6);
   font-size: 14px;
   background: rgba(0,0,0,0.4);
@@ -580,6 +645,7 @@ function avatarColor(name) {
   border-radius: 999px;
   font-variant-numeric: tabular-nums;
 }
+.lightbox-zoom { background: rgba(192,96,64,0.3); color: rgba(255,255,255,0.85); }
 
 @media (max-width: 900px) {
   .detail-layout {
