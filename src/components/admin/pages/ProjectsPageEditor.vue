@@ -34,6 +34,17 @@
           <label class="field"><span>技术栈（逗号分隔）</span><input :value="p.techStack?.join(', ')" @input="updateProject(i, 'techStack', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
           <label class="field"><span>链接</span><input :value="p.link" @input="updateProject(i, 'link', $event.target.value)" /></label>
         </div>
+        <div class="contributors-editor">
+          <div class="contributors-header">
+            <span class="sub-title">贡献者</span>
+            <button class="btn btn-outline btn-xs" @click="addContributor(i)">+ 添加</button>
+          </div>
+          <div v-for="(contrib, ci) in p.contributors || []" :key="ci" class="contrib-row">
+            <input :value="contrib.name" @input="updateContributor(i, ci, 'name', $event.target.value)" placeholder="姓名" class="contrib-input" />
+            <input :value="contrib.role" @input="updateContributor(i, ci, 'role', $event.target.value)" placeholder="角色" class="contrib-input" />
+            <button class="btn-icon btn-icon-sm" @click="removeContributor(i, ci)">&times;</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -59,13 +70,35 @@ function updateProject(i, k, v) {
   up({ ...c(), projects })
 }
 function addProject() {
-  up({ ...c(), projects: [...(c().projects || []), { name: '', slug: '', category: '', description: '', longDescription: '', coverClass: 'aurora', coverImage: '', screenshots: [], githubUrl: '', techStack: [], status: 'wip', featured: false, link: '' }] })
+  up({ ...c(), projects: [...(c().projects || []), { name: '', slug: '', category: '', description: '', longDescription: '', coverClass: 'aurora', coverImage: '', screenshots: [], githubUrl: '', techStack: [], status: 'wip', featured: false, link: '', contributors: [] }] })
   nextTick(() => { const refs = projectRefs.value; refs[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
 }
 function removeProject(i) { up({ ...c(), projects: (c().projects || []).filter((_, idx) => idx !== i) }) }
 function moveProject(i, dir) {
   const projects = [...(c().projects || [])]; const j = i + dir
   if (j < 0 || j >= projects.length) return;[projects[i], projects[j]] = [projects[j], projects[i]]
+  up({ ...c(), projects })
+}
+
+function addContributor(pi) {
+  const projects = [...(c().projects || [])]
+  const p = projects[pi]
+  projects[pi] = { ...p, contributors: [...(p.contributors || []), { name: '', role: '', avatar: '' }] }
+  up({ ...c(), projects })
+}
+
+function removeContributor(pi, ci) {
+  const projects = [...(c().projects || [])]
+  const p = projects[pi]
+  projects[pi] = { ...p, contributors: (p.contributors || []).filter((_, i) => i !== ci) }
+  up({ ...c(), projects })
+}
+
+function updateContributor(pi, ci, key, value) {
+  const projects = [...(c().projects || [])]
+  const contribs = [...(projects[pi].contributors || [])]
+  contribs[ci] = { ...contribs[ci], [key]: value }
+  projects[pi] = { ...projects[pi], contributors: contribs }
   up({ ...c(), projects })
 }
 </script>
@@ -89,6 +122,13 @@ function moveProject(i, dir) {
 .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
 .sort-btns { display: flex; gap: 4px; }
 .btn-xs { padding: 3px 10px; font-size: 11px; }
+.contributors-editor { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--glass-border); }
+.contributors-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sub-title { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.contrib-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.contrib-input { flex: 1; padding: 6px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; color: var(--text-primary); }
+.contrib-input:focus { outline: none; border-color: var(--warm-terracotta); }
+.btn-icon-sm { width: 22px; height: 22px; font-size: 13px; }
 
 @media (max-width: 768px) {
   .editor-card { padding: 12px; }

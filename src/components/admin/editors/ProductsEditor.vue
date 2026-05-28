@@ -106,6 +106,17 @@
               </span>
             </label>
           </div>
+          <div class="contributors-editor">
+            <div class="contributors-header">
+              <span class="sub-title">贡献者</span>
+              <button class="btn btn-outline btn-xs" @click="addContributor(si, pi)">+ 添加</button>
+            </div>
+            <div v-for="(contrib, ci) in proj.contributors || []" :key="ci" class="contrib-row">
+              <input :value="contrib.name" @input="updateContributor(si, pi, ci, 'name', $event.target.value)" placeholder="姓名" class="contrib-input" />
+              <input :value="contrib.role" @input="updateContributor(si, pi, ci, 'role', $event.target.value)" placeholder="角色" class="contrib-input" />
+              <button class="btn-icon btn-icon-sm" @click="removeContributor(si, pi, ci)">&times;</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -197,7 +208,7 @@ function addProjectFromPool(si, event) {
 
 function addProject(si) {
   const slides = [...props.modelValue.slides]
-  slides[si] = { ...slides[si], projects: [...slides[si].projects, { name: '', slug: '', category: '', description: '', link: '', coverClass: 'aurora', techStack: [], featured: false }] }
+  slides[si] = { ...slides[si], projects: [...slides[si].projects, { name: '', slug: '', category: '', description: '', link: '', coverClass: 'aurora', techStack: [], featured: false, contributors: [] }] }
   emitVal({ ...props.modelValue, slides })
   nextTick(() => { const refs = projectRefs.value[si]; refs?.[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
 }
@@ -233,6 +244,28 @@ function updateProject(si, pi, key, value) {
 
   emitVal({ ...props.modelValue, slides })
 }
+
+function addContributor(si, pi) {
+  const slides = props.modelValue.slides.map(s => ({ ...s, projects: [...s.projects] }))
+  const proj = slides[si].projects[pi]
+  slides[si].projects[pi] = { ...proj, contributors: [...(proj.contributors || []), { name: '', role: '', avatar: '' }] }
+  emitVal({ ...props.modelValue, slides })
+}
+
+function removeContributor(si, pi, ci) {
+  const slides = props.modelValue.slides.map(s => ({ ...s, projects: [...s.projects] }))
+  const proj = slides[si].projects[pi]
+  slides[si].projects[pi] = { ...proj, contributors: (proj.contributors || []).filter((_, i) => i !== ci) }
+  emitVal({ ...props.modelValue, slides })
+}
+
+function updateContributor(si, pi, ci, key, value) {
+  const slides = props.modelValue.slides.map(s => ({ ...s, projects: [...s.projects] }))
+  const contribs = [...(slides[si].projects[pi].contributors || [])]
+  contribs[ci] = { ...contribs[ci], [key]: value }
+  slides[si].projects[pi] = { ...slides[si].projects[pi], contributors: contribs }
+  emitVal({ ...props.modelValue, slides })
+}
 </script>
 
 <style scoped>
@@ -266,6 +299,12 @@ function updateProject(si, pi, key, value) {
 .checkbox-label input { width: auto; }
 .add-project-wrap { display: flex; gap: 8px; align-items: center; }
 .project-select { padding: 4px 8px; border: 1px solid var(--glass-border); border-radius: var(--radius-sm); font-size: 12px; background: white; color: var(--text-primary); max-width: 180px; }
+.contributors-editor { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--glass-border); }
+.contributors-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.contrib-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.contrib-input { flex: 1; padding: 6px 10px; border: 1px solid var(--glass-border); border-radius: var(--radius-sm); font-size: 12px; background: white; color: var(--text-primary); }
+.contrib-input:focus { outline: none; border-color: var(--warm-terracotta); }
+.btn-icon-sm { width: 22px; height: 22px; font-size: 13px; }
 
 @media (max-width: 768px) {
   .editor-card { padding: 16px; }

@@ -47,6 +47,10 @@
                 <div class="card-tags">
                   <span v-for="t in project.techStack" :key="t" class="tag">{{ t }}</span>
                 </div>
+                <div v-if="project.contributors?.length" class="card-contributors">
+                  <div v-for="c in project.contributors.slice(0, 5)" :key="c.name" class="contrib-avatar" :style="{ background: avatarColor(c.name) }" :title="c.name + (c.role ? ' · ' + c.role : '')">{{ c.name[0] }}</div>
+                  <span v-if="project.contributors.length > 5" class="contrib-more">+{{ project.contributors.length - 5 }}</span>
+                </div>
               </div>
             </div>
           </router-link>
@@ -104,6 +108,13 @@ function scrollBy(dir) {
 }
 
 onMounted(() => { nextTick(updateScrollState) })
+
+function avatarColor(name) {
+  const colors = ['#c06040', '#d4920a', '#7a9a6a', '#8b7355', '#c07080', '#6a8a9a', '#9a6a8a', '#5a7a5a']
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
+}
 </script>
 
 <style scoped>
@@ -334,6 +345,37 @@ onMounted(() => { nextTick(updateScrollState) })
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.card-contributors {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.contrib-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  border: 2px solid #fff;
+  margin-left: -6px;
+  flex-shrink: 0;
+}
+
+.contrib-avatar:first-child { margin-left: 0; }
+
+.contrib-more {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 6px;
+  font-weight: 500;
 }
 
 @media (max-width: 768px) {
