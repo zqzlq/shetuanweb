@@ -36,7 +36,7 @@
           <label class="field"><span>级别</span><input :value="item.award.level" @input="updateAwardItem(item._origIdx, 'level', $event.target.value)" /></label>
           <label class="field"><span>日期</span><input :value="item.award.date" @input="updateAwardItem(item._origIdx, 'date', $event.target.value)" placeholder="2026-05" /></label>
           <label class="field"><span>分类</span><select :value="item.award.category" @change="updateAwardItem(item._origIdx, 'category', $event.target.value)"><option value="" disabled>选择分类</option><option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ cat }}</option></select></label>
-          <label class="field full"><span>标题</span><input :value="item.award.title" @input="updateAwardItem(item._origIdx, 'title', $event.target.value); updateAwardItem(item._origIdx, 'slug', $event.target.value)" /></label>
+          <label class="field full"><span>标题</span><input :value="item.award.title" @input="updateTitleAndSlug(item._origIdx, $event.target.value)" /></label>
           <label class="field full"><span>简述</span><input :value="item.award.shortDesc" @input="updateAwardItem(item._origIdx, 'shortDesc', $event.target.value)" /></label>
           <label class="field full"><span>描述</span><textarea :value="item.award.description" @input="updateAwardItem(item._origIdx, 'description', $event.target.value)" rows="2"></textarea></label>
           <label class="field full"><span>详细介绍（Markdown）</span><MarkdownEditorField :modelValue="item.award.longDescription || ''" @update:modelValue="updateAwardItem(item._origIdx, 'longDescription', $event)" /></label>
@@ -107,6 +107,12 @@ function updateAwards(k, v) { up({ ...c(), awards: { ...c().awards, [k]: v } }) 
 function updateAwardItem(i, k, v) {
   const items = [...(c().awards?.items || [])]
   items[i] = { ...items[i], [k]: v }
+  up({ ...c(), awards: { ...c().awards, items } })
+}
+
+function updateTitleAndSlug(i, v) {
+  const items = [...(c().awards?.items || [])]
+  items[i] = { ...items[i], title: v, slug: v }
   up({ ...c(), awards: { ...c().awards, items } })
 }
 

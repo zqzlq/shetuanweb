@@ -29,7 +29,7 @@
         </div>
         <div v-if="expandedIndex === i" class="project-detail">
           <div class="field-grid">
-            <label class="field"><span>名称</span><input :value="p.name" @input="updateProject(i, 'name', $event.target.value); updateProject(i, 'slug', $event.target.value)" /></label>
+            <label class="field"><span>名称</span><input :value="p.name" @input="updateNameAndSlug(i, $event.target.value)" /></label>
             <label class="field"><span>分类</span><select :value="p.category" @change="updateProject(i, 'category', $event.target.value)"><option value="" disabled>选择分类</option><option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ cat }}</option></select></label>
             <label class="field"><span>封面样式</span><input :value="p.coverClass" @input="updateProject(i, 'coverClass', $event.target.value)" /></label>
             <label class="field"><span>GitHub</span><input :value="p.githubUrl" @input="updateProject(i, 'githubUrl', $event.target.value)" /></label>
@@ -83,6 +83,11 @@ function updateHero(k, v) { up({ ...c(), hero: { ...c().hero, [k]: v } }) }
 function updateProject(i, k, v) {
   const projects = [...(c().projects || [])]
   projects[i] = { ...projects[i], [k]: v }
+  up({ ...c(), projects })
+}
+function updateNameAndSlug(i, v) {
+  const projects = [...(c().projects || [])]
+  projects[i] = { ...projects[i], name: v, slug: v }
   up({ ...c(), projects })
 }
 function addProject() {
