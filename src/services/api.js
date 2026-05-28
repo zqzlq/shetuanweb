@@ -269,7 +269,8 @@ export async function resetAllContent() {
 }
 
 export async function uploadImage(file) {
-  const token = localStorage.getItem(TOKEN_KEY)
+  // 优先用 admin token，没有则用 user token
+  const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem(USER_TOKEN_KEY)
   const formData = new FormData()
   formData.append('file', file)
 
@@ -289,8 +290,13 @@ export function getDefaultConfig() {
 }
 
 export async function deleteImage(url) {
-  return request('/admin/delete-image', {
-    method: 'POST',
-    body: JSON.stringify({ url }),
+  const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem(USER_TOKEN_KEY)
+  const headers = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await fetch(`${API_BASE}/admin/delete-image`, {
+    method: 'POST', headers, body: JSON.stringify({ url }),
   })
+  const data = await res.json()
+  if (!res.ok) throw { status: res.status, message: data.message || '删除失败' }
+  return data
 }
