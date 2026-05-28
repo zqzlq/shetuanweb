@@ -74,8 +74,7 @@ docker compose up -d --build
 ```
 
 ### 默认管理员账号
-- 用户名: `admin`
-- 密码: `admin123`
+
 
 ## 开发环境
 
