@@ -23,7 +23,7 @@
         <div class="field-grid">
           <label class="field"><span>名称</span><input :value="p.name" @input="updateProject(i, 'name', $event.target.value)" /></label>
           <label class="field"><span>Slug</span><input :value="p.slug" @input="updateProject(i, 'slug', $event.target.value)" /></label>
-          <label class="field"><span>分类</span><input :value="p.category" @input="updateProject(i, 'category', $event.target.value)" /></label>
+          <label class="field"><span>分类</span><select :value="p.category" @change="updateProject(i, 'category', $event.target.value)"><option value="" disabled>选择分类</option><option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ cat }}</option></select></label>
           <label class="field"><span>封面样式</span><input :value="p.coverClass" @input="updateProject(i, 'coverClass', $event.target.value)" /></label>
           <label class="field"><span>GitHub</span><input :value="p.githubUrl" @input="updateProject(i, 'githubUrl', $event.target.value)" /></label>
           <label class="field"><span>状态</span><input :value="p.status" @input="updateProject(i, 'status', $event.target.value)" /></label>
@@ -51,7 +51,7 @@
 </template>
 
 <script setup>
-import { nextTick, ref } from 'vue'
+import { nextTick, ref, inject, computed } from 'vue'
 import ImageUploadField from '../ImageUploadField.vue'
 import MultiImageUploadField from '../MultiImageUploadField.vue'
 import MarkdownEditorField from '../MarkdownEditorField.vue'
@@ -61,6 +61,8 @@ const c = () => props.content
 const up = (val) => emit('update', val)
 
 const projectRefs = ref([])
+const allCategories = inject('productCategories', computed(() => []))
+const categoryOptions = computed(() => allCategories.value.filter(c => c !== '精选总览'))
 
 function updateHero(k, v) { up({ ...c(), hero: { ...c().hero, [k]: v } }) }
 
@@ -112,8 +114,8 @@ function updateContributor(pi, ci, key, value) {
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field.full { grid-column: 1 / -1; }
 .field span { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 3px; }
-.field input, .field textarea { width: 100%; padding: 7px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; color: var(--text-primary); }
-.field input:focus, .field textarea:focus { outline: none; border-color: var(--warm-terracotta); }
+.field input, .field textarea, .field select { width: 100%; padding: 7px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; color: var(--text-primary); }
+.field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--warm-terracotta); }
 .list-item { border: 1px solid var(--glass-border); border-radius: 8px; padding: 12px; margin-top: 8px; background: white; }
 .list-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .item-index { font-size: 11px; font-weight: 600; color: var(--text-muted); }

@@ -36,7 +36,7 @@
           <label class="field"><span>Slug</span><input :value="item.award.slug" @input="updateAwardItem(item._origIdx, 'slug', $event.target.value)" /></label>
           <label class="field"><span>级别</span><input :value="item.award.level" @input="updateAwardItem(item._origIdx, 'level', $event.target.value)" /></label>
           <label class="field"><span>日期</span><input :value="item.award.date" @input="updateAwardItem(item._origIdx, 'date', $event.target.value)" placeholder="2026-05" /></label>
-          <label class="field"><span>分类</span><input :value="item.award.category" @input="updateAwardItem(item._origIdx, 'category', $event.target.value)" placeholder="比赛/设计" /></label>
+          <label class="field"><span>分类</span><select :value="item.award.category" @change="updateAwardItem(item._origIdx, 'category', $event.target.value)"><option value="" disabled>选择分类</option><option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ cat }}</option></select></label>
           <label class="field full"><span>标题</span><input :value="item.award.title" @input="updateAwardItem(item._origIdx, 'title', $event.target.value)" /></label>
           <label class="field full"><span>简述</span><input :value="item.award.shortDesc" @input="updateAwardItem(item._origIdx, 'shortDesc', $event.target.value)" /></label>
           <label class="field full"><span>描述</span><textarea :value="item.award.description" @input="updateAwardItem(item._origIdx, 'description', $event.target.value)" rows="2"></textarea></label>
@@ -56,13 +56,16 @@
 </template>
 
 <script setup>
-import { nextTick, ref, computed } from 'vue'
+import { nextTick, ref, computed, inject } from 'vue'
 import ImageUploadField from '../ImageUploadField.vue'
 import MultiImageUploadField from '../MultiImageUploadField.vue'
 import MarkdownEditorField from '../MarkdownEditorField.vue'
 
 const props = defineProps({ content: Object })
 const emit = defineEmits(['update'])
+
+const allCategories = inject('productCategories', computed(() => []))
+const categoryOptions = computed(() => allCategories.value.filter(c => c !== '精选总览'))
 const c = () => props.content
 const up = (val) => emit('update', val)
 
@@ -137,8 +140,8 @@ function moveAward(i, dir) {
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field.full { grid-column: 1 / -1; }
 .field span { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 3px; }
-.field input, .field textarea { width: 100%; padding: 7px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; color: var(--text-primary); }
-.field input:focus, .field textarea:focus { outline: none; border-color: var(--warm-terracotta); }
+.field input, .field textarea, .field select { width: 100%; padding: 7px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; color: var(--text-primary); }
+.field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--warm-terracotta); }
 .list-item { border: 1px solid var(--glass-border); border-radius: 8px; padding: 12px; margin-top: 8px; background: white; }
 .list-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .item-index { font-size: 11px; font-weight: 600; color: var(--text-muted); }

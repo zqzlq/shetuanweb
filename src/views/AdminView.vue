@@ -79,7 +79,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, provide } from 'vue'
 import { login as apiLogin, logout as apiLogout, isLoggedIn as checkLoggedIn, getCurrentUser, getAdminConfig, updateConfig, getAdminPages, updatePage, resetPage, exportAll, importAll, resetAllContent } from '@/services/api'
 import AdminSidebar from '@/components/admin/AdminSidebar.vue'
 import AdminHeader from '@/components/admin/AdminHeader.vue'
@@ -105,6 +105,8 @@ const pages = ref([])
 const isDirty = ref(false)
 const isSaving = ref(false)
 const sidebarOpen = ref(false)
+
+provide('productCategories', computed(() => siteConfig.products?.categories || []))
 
 const sectionItems = [
   { key: 'hero', label: 'Hero 区域' },
