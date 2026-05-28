@@ -41,7 +41,7 @@
         <h2 class="section-title">{{ page.content.sections.contributorsTitle }}</h2>
         <div class="contributors-grid">
           <div v-for="c in visibleContributors" :key="c.name" class="contributor">
-            <div class="contributor-avatar" :style="c.avatar ? {} : { background: avatarColor(c.name) }"><img v-if="c.avatar" :src="c.avatar" :alt="c.name" /><span v-else>{{ c.name[0] }}</span></div>
+            <div class="contributor-avatar" :style="memberAvatarMap[c.name] ? {} : { background: avatarColor(c.name) }"><img v-if="memberAvatarMap[c.name]" :src="memberAvatarMap[c.name]" :alt="c.name" /><span v-else>{{ c.name[0] }}</span></div>
             <strong>{{ c.name }}</strong>
             <span>{{ c.commits }} commits</span>
           </div>
@@ -74,7 +74,16 @@ import PaperCard from '@/components/ui/PaperCard.vue'
 
 const store = useSiteConfigStore()
 const page = store.getPage('open-source')
+const membersPage = store.getPage('members')
 useScrollReveal()
+
+const memberAvatarMap = computed(() => {
+  const map = {}
+  for (const m of membersPage?.content?.members || []) {
+    if (m.avatar) map[m.name] = m.avatar
+  }
+  return map
+})
 
 const REPO_SIZE = 3
 const showRepos = ref(REPO_SIZE)

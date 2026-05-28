@@ -180,7 +180,11 @@ function toggleSection(key, checked) {
 async function handleSave() {
   isSaving.value = true
   try {
-    if (activeSection.value === 'pages') return
+    if (activeSection.value === 'pages') {
+      // 页面编辑器有自己的保存按钮，全局保存时提示用户
+      alert('请使用页面编辑器内的"保存"按钮保存页面内容')
+      return
+    }
     await updateConfig(siteConfig)
     isDirty.value = false
   } catch (e) {

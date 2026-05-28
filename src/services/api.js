@@ -95,7 +95,9 @@ export async function getAdminConfig() {
 }
 
 export async function updateConfig(config) {
-  return request('/admin/config', { method: 'PUT', body: JSON.stringify(config) })
+  const result = await request('/admin/config', { method: 'PUT', body: JSON.stringify(config) })
+  _configCache = null
+  return result
 }
 
 export async function updateConfigSection(key, value) {
@@ -147,7 +149,9 @@ export async function importAll(data) {
 }
 
 export async function resetAllContent() {
-  return request('/admin/reset-all', { method: 'POST' })
+  const result = await request('/admin/reset-all', { method: 'POST' })
+  _configCache = null
+  return result
 }
 
 export async function uploadImage(file) {

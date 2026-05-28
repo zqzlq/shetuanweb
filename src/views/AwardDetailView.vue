@@ -83,7 +83,7 @@
             <h3>参赛成员</h3>
             <div class="participant-list">
               <div v-for="(name, i) in award.participants" :key="name" class="participant">
-                <div class="participant-avatar" :style="{ background: avatarColor(name) }">{{ name[0] }}</div>
+                <div class="participant-avatar" :style="memberAvatarMap[name] ? {} : { background: avatarColor(name) }"><img v-if="memberAvatarMap[name]" :src="memberAvatarMap[name]" :alt="name" /><span v-else>{{ name[0] }}</span></div>
                 <span>{{ name }}</span>
               </div>
             </div>
@@ -104,10 +104,19 @@ import MarkdownRenderer from '@/components/ui/MarkdownRenderer.vue'
 const route = useRoute()
 const store = useSiteConfigStore()
 const page = store.getPage('projects')
+const membersPage = store.getPage('members')
 const award = computed(() => page?.content?.awards?.items?.find((a) => a.slug === route.params.slug))
 const relatedProject = computed(() => {
   if (!award.value?.projectSlug) return null
   return page?.content?.projects?.find((p) => p.slug === award.value.projectSlug)
+})
+
+const memberAvatarMap = computed(() => {
+  const map = {}
+  for (const m of membersPage?.content?.members || []) {
+    if (m.avatar) map[m.name] = m.avatar
+  }
+  return map
 })
 useScrollReveal()
 
@@ -339,7 +348,9 @@ function avatarColor(name) {
   font-size: 14px;
   color: #fff;
   flex-shrink: 0;
+  overflow: hidden;
 }
+.participant-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 /* 图片画廊 */
 .screenshots-section {
