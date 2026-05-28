@@ -141,9 +141,13 @@ function update(key, value) { emitVal({ ...props.modelValue, [key]: value }) }
 
 function updateCat(i, value) {
   const categories = [...props.modelValue.categories]
+  const oldValue = categories[i]
   categories[i] = value
-  const slides = [...props.modelValue.slides]
-  if (slides[i]) slides[i] = { ...slides[i], tag: value }
+  const slides = props.modelValue.slides.map(s => ({
+    ...s,
+    tag: s.tag === oldValue ? value : s.tag,
+    projects: s.projects.map(p => p.category === oldValue ? { ...p, category: value } : p)
+  }))
   emitVal({ ...props.modelValue, categories, slides })
 }
 
