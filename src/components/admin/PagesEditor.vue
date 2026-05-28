@@ -4,16 +4,24 @@
       <div class="list-header">
         <h3>页面列表</h3>
       </div>
-      <button
-        v-for="p in pages"
-        :key="p.slug"
-        class="page-item"
-        :class="{ active: selectedSlug === p.slug }"
-        @click="selectPage(p.slug)"
-      >
-        <span class="page-slug">/{{ p.slug }}</span>
-        <span class="page-title">{{ p.title }}</span>
-      </button>
+      <template v-for="p in pages" :key="p.slug">
+        <div v-if="subRoutes[p.slug]" class="page-group">
+          <button class="page-item" :class="{ active: selectedSlug === p.slug }" @click="selectPage(p.slug)">
+            <span class="page-slug">/{{ p.slug }}</span>
+            <span class="page-title">{{ p.title }}</span>
+            <span class="expand-arrow" :class="{ expanded: expandedSlugs.has(p.slug) }">&#9656;</span>
+          </button>
+          <div v-if="expandedSlugs.has(p.slug)" class="sub-list">
+            <button v-for="sub in subRoutes[p.slug]" :key="sub.key" class="page-item sub-item" :class="{ active: selectedSlug === p.slug && activeEditor === sub.key }" @click="selectSub(p.slug, sub.key)">
+              <span class="page-title">{{ sub.label }}</span>
+            </button>
+          </div>
+        </div>
+        <button v-else class="page-item" :class="{ active: selectedSlug === p.slug }" @click="selectPage(p.slug)">
+          <span class="page-slug">/{{ p.slug }}</span>
+          <span class="page-title">{{ p.title }}</span>
+        </button>
+      </template>
     </div>
 
     <div class="pages-detail" v-if="selectedPage">
@@ -57,6 +65,7 @@ import GenericPageEditor from './pages/GenericPageEditor.vue'
 import AboutPageEditor from './pages/AboutPageEditor.vue'
 import MembersPageEditor from './pages/MembersPageEditor.vue'
 import ProjectsPageEditor from './pages/ProjectsPageEditor.vue'
+import AwardsPageEditor from './pages/AwardsPageEditor.vue'
 import BlogPageEditor from './pages/BlogPageEditor.vue'
 import JoinPageEditor from './pages/JoinPageEditor.vue'
 
@@ -74,20 +83,45 @@ const pageEditors = {
   about: AboutPageEditor,
   members: MembersPageEditor,
   projects: ProjectsPageEditor,
+  awards: AwardsPageEditor,
   blog: BlogPageEditor,
   join: JoinPageEditor,
 }
 
+// 子路由映射：slug → 可展开的子编辑器列表
+const subRoutes = {
+  projects: [
+    { key: 'projects', label: '项目列表' },
+    { key: 'awards', label: '比赛奖项' },
+  ],
+}
+const expandedSlugs = ref(new Set())
+const activeEditor = ref(null)
+
 const selectedPage = computed(() => props.pages.find((p) => p.slug === selectedSlug.value))
-const pageEditorComponent = computed(() => pageEditors[selectedSlug.value] || null)
+const pageEditorComponent = computed(() => pageEditors[activeEditor.value] || pageEditors[selectedSlug.value] || null)
 
 function selectPage(slug) {
   selectedSlug.value = slug
+  activeEditor.value = subRoutes[slug] ? subRoutes[slug][0].key : slug
+  if (subRoutes[slug]) expandedSlugs.value.add(slug)
   const page = props.pages.find((p) => p.slug === slug)
   editContent.value = JSON.parse(JSON.stringify(page?.content || {}))
   jsonText.value = JSON.stringify(editContent.value, null, 2)
   jsonError.value = ''
   pageDirty.value = false
+}
+
+function selectSub(slug, subKey) {
+  if (selectedSlug.value !== slug) {
+    selectedSlug.value = slug
+    const page = props.pages.find((p) => p.slug === slug)
+    editContent.value = JSON.parse(JSON.stringify(page?.content || {}))
+    jsonText.value = JSON.stringify(editContent.value, null, 2)
+    pageDirty.value = false
+  }
+  activeEditor.value = subKey
+  jsonError.value = ''
 }
 
 watch(editMode, (mode) => {
@@ -129,6 +163,14 @@ function savePage() {
 .page-item.active { background: rgba(192, 96, 64, 0.08); }
 .page-slug { display: block; font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
 .page-title { display: block; font-size: 13px; color: var(--text-primary); margin-top: 2px; }
+.page-group .page-item { display: flex; align-items: center; flex-wrap: wrap; }
+.page-group .page-slug { flex: 1; }
+.page-group .page-title { flex: 1; }
+.expand-arrow { font-size: 10px; color: var(--text-muted); margin-left: 6px; transition: transform 0.2s; }
+.expand-arrow.expanded { transform: rotate(90deg); }
+.sub-list { border-top: 1px solid var(--glass-border); }
+.sub-item { padding-left: 36px !important; border-bottom: none !important; font-size: 13px; }
+.sub-item .page-title { font-size: 12px; }
 
 .pages-detail { flex: 1; background: #fff; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 24px; min-width: 0; }
 .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
