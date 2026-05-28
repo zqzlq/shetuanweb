@@ -55,7 +55,7 @@
                       transform: 'scale(' + zoomLevel + ') translate(' + (zoomLevel > 1 ? panX / zoomLevel : 0) + 'px, ' + (zoomLevel > 1 ? panY / zoomLevel : 0) + 'px)',
                       cursor: zoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in'
                     }"
-                    @click="toggleZoom" />
+                    @click="onClickImg" />
                 </div>
                 <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-next" @click="nextImage" aria-label="下一张">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
@@ -187,9 +187,11 @@ function onWheel(e) {
   if (zoomLevel.value === 1) { panX.value = 0; panY.value = 0 }
 }
 
+let didDrag = false
 function onMouseDown(e) {
   if (zoomLevel.value <= 1) return
   isDragging.value = true
+  didDrag = false
   dragStart.value = { x: e.clientX - panX.value, y: e.clientY - panY.value }
   e.preventDefault()
 }
@@ -197,8 +199,13 @@ function onMouseMove(e) {
   if (!isDragging.value) return
   panX.value = e.clientX - dragStart.value.x
   panY.value = e.clientY - dragStart.value.y
+  didDrag = true
 }
 function onMouseUp() { isDragging.value = false }
+function onClickImg() {
+  if (didDrag) return
+  toggleZoom()
+}
 
 function scrollScreenshots(dir) {
   const el = trackRef.value
