@@ -2,7 +2,7 @@
   <div class="user-manager">
     <div class="apps-toolbar">
       <div class="status-tabs">
-        <button v-for="s in statuses" :key="s.key" class="filter-tab" :class="{ active: activeStatus === s.key }" @click="activeStatus = s.key">{{ s.label }}</button>
+        <button v-for="s in statuses" :key="s.key" class="filter-tab" :class="{ active: activeStatus === s.key }" @click="activeStatus = s.key">{{ s.label }}<span v-if="counts[s.key]" class="tab-count">{{ counts[s.key] }}</span></button>
       </div>
       <button class="btn btn-outline btn-sm" @click="loadUsers">刷新</button>
     </div>
@@ -60,7 +60,7 @@ const emit = defineEmits(['refresh'])
 
 const users = ref([])
 const loading = ref(false)
-const activeStatus = ref('all')
+const activeStatus = ref('pending')
 const selectedIds = ref(new Set())
 
 const statuses = [
@@ -69,6 +69,12 @@ const statuses = [
   { key: 'approved', label: '已通过' },
   { key: 'rejected', label: '已拒绝' },
 ]
+
+const counts = computed(() => {
+  const c = { all: users.value.length }
+  users.value.forEach(u => { c[u.status] = (c[u.status] || 0) + 1 })
+  return c
+})
 
 const filtered = computed(() => {
   if (activeStatus.value === 'all') return users.value
@@ -142,6 +148,7 @@ function statusLabel(s) {
 .status-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .filter-tab { padding: 6px 16px; border: 1px solid var(--glass-border); border-radius: 999px; background: white; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .filter-tab.active { background: var(--warm-terracotta); color: white; border-color: transparent; }
+.tab-count { font-weight: 700; margin-left: 4px; }
 .batch-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: rgba(192,96,64,0.06); border: 1px solid rgba(192,96,64,0.2); border-radius: var(--radius-md); margin-bottom: 16px; }
 .batch-info { font-size: 13px; color: var(--text-secondary); }
 .batch-info strong { color: var(--warm-terracotta); }

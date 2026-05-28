@@ -33,11 +33,10 @@
           </span>
         </div>
         <div class="field-grid">
-          <label class="field"><span>Slug</span><input :value="item.award.slug" @input="updateAwardItem(item._origIdx, 'slug', $event.target.value)" /></label>
           <label class="field"><span>级别</span><input :value="item.award.level" @input="updateAwardItem(item._origIdx, 'level', $event.target.value)" /></label>
           <label class="field"><span>日期</span><input :value="item.award.date" @input="updateAwardItem(item._origIdx, 'date', $event.target.value)" placeholder="2026-05" /></label>
           <label class="field"><span>分类</span><select :value="item.award.category" @change="updateAwardItem(item._origIdx, 'category', $event.target.value)"><option value="" disabled>选择分类</option><option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ cat }}</option></select></label>
-          <label class="field full"><span>标题</span><input :value="item.award.title" @input="updateAwardItem(item._origIdx, 'title', $event.target.value)" /></label>
+          <label class="field full"><span>标题</span><input :value="item.award.title" @input="updateAwardItem(item._origIdx, 'title', $event.target.value); updateAwardItem(item._origIdx, 'slug', $event.target.value)" /></label>
           <label class="field full"><span>简述</span><input :value="item.award.shortDesc" @input="updateAwardItem(item._origIdx, 'shortDesc', $event.target.value)" /></label>
           <label class="field full"><span>描述</span><textarea :value="item.award.description" @input="updateAwardItem(item._origIdx, 'description', $event.target.value)" rows="2"></textarea></label>
           <label class="field full"><span>详细介绍（Markdown）</span><MarkdownEditorField :modelValue="item.award.longDescription || ''" @update:modelValue="updateAwardItem(item._origIdx, 'longDescription', $event)" /></label>
@@ -114,7 +113,7 @@ function updateAwardItem(i, k, v) {
 function addAward() {
   const now = new Date()
   const defaultDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-  const newItem = { slug: '', title: '', shortDesc: '', description: '', longDescription: '', image: '', screenshots: [], level: '', date: defaultDate, category: '', participants: [], projectSlug: '' }
+  const newItem = { title: '', shortDesc: '', description: '', longDescription: '', image: '', screenshots: [], level: '', date: defaultDate, category: '', participants: [], projectSlug: '' }
   up({ ...c(), awards: { ...c().awards, items: [...(c().awards?.items || []), newItem] } })
   nextTick(() => { const refs = itemRefs.value; refs[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
 }

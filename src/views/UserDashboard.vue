@@ -59,8 +59,7 @@
         <div class="editor-card">
           <div class="card-header"><h3>提交奖状</h3></div>
           <div class="field-grid">
-            <label class="field"><span>奖项名称 <em>*</em></span><input v-model="awardForm.title" placeholder="如：程序设计大赛一等奖" /></label>
-            <label class="field"><span>Slug</span><input v-model="awardForm.slug" placeholder="唯一标识" /></label>
+            <label class="field"><span>奖项名称 <em>*</em></span><input v-model="awardForm.title" @input="awardForm.slug = awardForm.title" placeholder="如：程序设计大赛一等奖" /></label>
             <label class="field"><span>级别</span><input v-model="awardForm.level" placeholder="如：省级一等奖" /></label>
             <label class="field"><span>日期</span><input v-model="awardForm.date" type="month" /></label>
             <label class="field"><span>分类</span><input v-model="awardForm.category" placeholder="如：计算机设计" /></label>
@@ -91,8 +90,7 @@
         <div class="editor-card">
           <div class="card-header"><h3>提交作品</h3></div>
           <div class="field-grid">
-            <label class="field"><span>作品名称 <em>*</em></span><input v-model="projectForm.name" /></label>
-            <label class="field"><span>Slug</span><input v-model="projectForm.slug" placeholder="唯一标识" /></label>
+            <label class="field"><span>作品名称 <em>*</em></span><input v-model="projectForm.name" @input="projectForm.slug = projectForm.name" /></label>
             <label class="field"><span>分类</span><select v-model="projectForm.category"><option value="" disabled>选择分类</option><option v-for="c in categories" :key="c" :value="c">{{ c }}</option></select></label>
             <label class="field"><span>封面样式</span><input v-model="projectForm.coverClass" placeholder="aurora / meteor / nebula / cosmos / pulse / horizon" /></label>
             <label class="field"><span>GitHub</span><input v-model="projectForm.githubUrl" placeholder="https://github.com/..." /></label>

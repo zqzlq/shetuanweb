@@ -735,12 +735,16 @@ def sync_submission_to_page(sub):
 
     extra = sub.data or {}
 
+    # slug 为空时使用标题作为 slug
+    award_slug = extra.get('slug') or sub.title
+    project_slug = extra.get('slug') or sub.title
+
     if sub.type == 'award':
         awards = page.content.get('awards', {})
         items = awards.get('items', [])
-        if not any(a.get('slug') == extra.get('slug') for a in items if extra.get('slug')):
+        if not any(a.get('slug') == award_slug for a in items if award_slug):
             items.append({
-                'slug': extra.get('slug', ''),
+                'slug': award_slug,
                 'title': extra.get('title', sub.title),
                 'shortDesc': extra.get('shortDesc', ''),
                 'description': extra.get('description', ''),
@@ -758,10 +762,10 @@ def sync_submission_to_page(sub):
 
     elif sub.type == 'project':
         projects = page.content.get('projects', [])
-        if not any(p.get('slug') == extra.get('slug') for p in projects if extra.get('slug')):
+        if not any(p.get('slug') == project_slug for p in projects if project_slug):
             projects.append({
                 'name': extra.get('name', sub.title),
-                'slug': extra.get('slug', ''),
+                'slug': project_slug,
                 'category': extra.get('category', ''),
                 'description': extra.get('description', ''),
                 'longDescription': extra.get('longDescription', ''),

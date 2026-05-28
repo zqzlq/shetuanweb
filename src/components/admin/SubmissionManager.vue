@@ -2,7 +2,7 @@
   <div class="submission-manager">
     <div class="apps-toolbar">
       <div class="status-tabs">
-        <button v-for="s in statuses" :key="s.key" class="filter-tab" :class="{ active: activeStatus === s.key }" @click="activeStatus = s.key">{{ s.label }}</button>
+        <button v-for="s in statuses" :key="s.key" class="filter-tab" :class="{ active: activeStatus === s.key }" @click="activeStatus = s.key">{{ s.label }}<span v-if="counts[s.key]" class="tab-count">{{ counts[s.key] }}</span></button>
       </div>
       <button class="btn btn-outline btn-sm" @click="loadSubs">刷新</button>
     </div>
@@ -47,7 +47,7 @@ import { getSubmissions, updateSubmission, syncSubmissionToPage } from '@/servic
 
 const subs = ref([])
 const loading = ref(false)
-const activeStatus = ref('all')
+const activeStatus = ref('pending')
 
 const statuses = [
   { key: 'all', label: '全部' },
@@ -55,6 +55,12 @@ const statuses = [
   { key: 'approved', label: '已通过' },
   { key: 'rejected', label: '已拒绝' },
 ]
+
+const counts = computed(() => {
+  const c = { all: subs.value.length }
+  subs.value.forEach(s => { c[s.status] = (c[s.status] || 0) + 1 })
+  return c
+})
 
 const filtered = computed(() => {
   if (activeStatus.value === 'all') return subs.value
@@ -96,6 +102,7 @@ function statusLabel(s) {
 .status-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .filter-tab { padding: 6px 16px; border: 1px solid var(--glass-border); border-radius: 999px; background: white; font-size: 12px; cursor: pointer; }
 .filter-tab.active { background: var(--warm-terracotta); color: white; border-color: transparent; }
+.tab-count { font-weight: 700; margin-left: 4px; }
 .apps-loading, .apps-empty { text-align: center; padding: 48px; color: var(--text-muted); font-size: 14px; }
 .apps-list { display: flex; flex-direction: column; gap: 12px; }
 .app-card { background: #fff; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); overflow: hidden; }
