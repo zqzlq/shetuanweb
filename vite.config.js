@@ -10,6 +10,16 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['vue', 'vue-router', 'pinia'],
+          gsap: ['gsap'],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     proxy: {
