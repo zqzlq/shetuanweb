@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    container_name: xingyu-backend
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:-xingyu-studio-secret-2026}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-xingyu-jwt-secret-2026}
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/xingyu_cms.db}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+    volumes:
+      - db-data:/app/data
+      - upload-data:/app/uploads
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: xingyu-frontend
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  upload-data:
