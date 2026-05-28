@@ -593,25 +593,26 @@ function avatarColor(name) {
   display: flex;
   align-items: center;
   gap: 12px;
-  max-width: 92vw;
+  width: 100vw;
+  height: 100vh;
+  justify-content: center;
 }
 .lightbox-img-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  max-width: 85vw;
-  max-height: 82vh;
-  border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  width: 100vw;
+  height: 100vh;
 }
 .lightbox-img {
-  max-width: 85vw;
-  max-height: 82vh;
+  width: 100vw;
+  height: 100vh;
   object-fit: contain;
   transition: transform 0.25s ease;
   user-select: none;
   display: block;
+  padding: 20px;
 }
 .lightbox-nav {
   flex-shrink: 0;
