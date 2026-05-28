@@ -71,7 +71,7 @@ onMounted(loadSubs)
 
 async function loadSubs() {
   loading.value = true
-  try { subs.value = await getSubmissions(activeStatus.value) }
+  try { subs.value = await getSubmissions('all') }
   catch (e) { console.error('加载提交失败', e) }
   finally { loading.value = false }
 }

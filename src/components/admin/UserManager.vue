@@ -92,7 +92,7 @@ function toggleSelect(id) {
 
 async function loadUsers() {
   loading.value = true
-  try { users.value = await getUsers(activeStatus.value) }
+  try { users.value = await getUsers('all') }
   catch (e) { console.error('加载用户失败', e) }
   finally { loading.value = false }
 }

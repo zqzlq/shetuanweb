@@ -6,7 +6,7 @@
         返回项目列表
       </router-link>
 
-      <div class="award-header reveal" :class="{ 'has-image': award.image }" :style="award.image ? { backgroundImage: 'url(' + award.image + ')' } : {}">
+      <div class="award-header reveal" :class="{ 'has-image': award.image }" @click="award.image ? openImageLightbox(award.image) : null" :style="award.image ? { backgroundImage: 'url(' + award.image + ')' } : {}" :title="award.image ? '点击查看大图' : ''">
         <div class="award-header-overlay"></div>
         <div class="award-header-content">
           <div class="award-medal">
@@ -38,11 +38,21 @@
       <!-- Lightbox -->
       <Teleport to="body">
         <div v-if="lightboxIndex >= 0" class="lightbox-overlay" @click.self="closeLightbox">
-          <button class="lightbox-close" @click="closeLightbox">&times;</button>
-          <button class="lightbox-prev" @click="prevImage">&#8249;</button>
-          <img :src="award.screenshots[lightboxIndex]" class="lightbox-img" />
-          <button class="lightbox-next" @click="nextImage">&#8250;</button>
-          <div class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ award.screenshots.length }}</div>
+          <button class="lightbox-close" @click="closeLightbox" aria-label="关闭">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+          <div class="lightbox-container">
+            <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-prev" @click="prevImage" aria-label="上一张">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <img :src="lightboxImages[lightboxIndex]" class="lightbox-img" alt="大图" />
+            <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-next" @click="nextImage" aria-label="下一张">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+          <div class="lightbox-footer">
+            <span class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ lightboxImages.length }}</span>
+          </div>
         </div>
       </Teleport>
 
@@ -101,7 +111,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSiteConfigStore } from '@/stores/siteConfig'
 import { useScrollReveal } from '@/composables/useScrollReveal'
@@ -127,14 +137,32 @@ const memberAvatarMap = computed(() => {
 useScrollReveal()
 
 const lightboxIndex = ref(-1)
+const lightboxImages = ref([])
 const trackRef = ref(null)
 const canScrollLeft = ref(false)
 const canScrollRight = ref(true)
 
-function openLightbox(i) { lightboxIndex.value = i }
-function closeLightbox() { lightboxIndex.value = -1 }
-function prevImage() { lightboxIndex.value = (lightboxIndex.value - 1 + award.value.screenshots.length) % award.value.screenshots.length }
-function nextImage() { lightboxIndex.value = (lightboxIndex.value + 1) % award.value.screenshots.length }
+function openLightbox(i) {
+  lightboxImages.value = award.value?.screenshots || []
+  lightboxIndex.value = i
+}
+function openImageLightbox(url) {
+  lightboxImages.value = [url, ...(award.value?.screenshots || [])]
+  lightboxIndex.value = 0
+}
+function closeLightbox() { lightboxIndex.value = -1; lightboxImages.value = [] }
+function prevImage() { if (lightboxImages.value.length) lightboxIndex.value = (lightboxIndex.value - 1 + lightboxImages.value.length) % lightboxImages.value.length }
+function nextImage() { if (lightboxImages.value.length) lightboxIndex.value = (lightboxIndex.value + 1) % lightboxImages.value.length }
+
+// 键盘导航
+function onKeydown(e) {
+  if (lightboxIndex.value < 0) return
+  if (e.key === 'Escape') closeLightbox()
+  if (e.key === 'ArrowLeft') prevImage()
+  if (e.key === 'ArrowRight') nextImage()
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 function scrollScreenshots(dir) {
   const el = trackRef.value
@@ -480,52 +508,77 @@ function avatarColor(name) {
 .lightbox-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
+  background: rgba(0,0,0,0.88);
   z-index: 9999;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(8px);
+  animation: lbFadeIn 0.2s ease;
 }
-.lightbox-img {
-  max-width: 90vw;
-  max-height: 85vh;
-  border-radius: 8px;
-  object-fit: contain;
-}
+@keyframes lbFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .lightbox-close {
   position: absolute;
   top: 20px;
   right: 24px;
-  background: none;
+  background: rgba(255,255,255,0.1);
   border: none;
   color: white;
-  font-size: 36px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   cursor: pointer;
-  z-index: 1;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
 }
-.lightbox-prev, .lightbox-next {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255,255,255,0.15);
+.lightbox-close:hover { background: rgba(255,255,255,0.25); }
+.lightbox-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 92vw;
+}
+.lightbox-img {
+  max-width: 85vw;
+  max-height: 82vh;
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  user-select: none;
+}
+.lightbox-nav {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
   border: none;
   color: white;
-  font-size: 40px;
-  padding: 8px 16px;
   cursor: pointer;
-  border-radius: 8px;
-  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.2s;
 }
-.lightbox-prev { left: 20px; }
-.lightbox-next { right: 20px; }
-.lightbox-prev:hover, .lightbox-next:hover { background: rgba(255,255,255,0.3); }
-.lightbox-counter {
+.lightbox-nav:hover { background: rgba(255,255,255,0.25); transform: scale(1.1); }
+.lightbox-footer {
   position: absolute;
-  bottom: 20px;
+  bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
-  color: rgba(255,255,255,0.7);
+}
+.lightbox-counter {
+  color: rgba(255,255,255,0.6);
   font-size: 14px;
+  background: rgba(0,0,0,0.4);
+  padding: 4px 16px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 900px) {

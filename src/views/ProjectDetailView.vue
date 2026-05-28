@@ -7,7 +7,7 @@
       </router-link>
 
       <!-- 顶部封面 -->
-      <div class="detail-cover" :class="project.coverImage ? '' : 'cover-' + project.coverClass">
+      <div class="detail-cover" :class="project.coverImage ? '' : 'cover-' + project.coverClass" :style="project.coverImage ? { cursor: 'pointer' } : {}" @click="project.coverImage ? openImageLightbox(project.coverImage) : null">
         <img v-if="project.coverImage" :src="project.coverImage" :alt="project.name" class="cover-img" />
         <div class="cover-pattern"></div>
         <div class="cover-content">
@@ -25,24 +25,38 @@
             <MarkdownRenderer :content="project.longDescription" />
           </div>
 
-          <!-- 截图画廊 -->
+          <!-- 截图画廊 - 左右轮播 -->
           <section v-if="project.screenshots?.length" class="screenshots-section reveal">
             <h2>项目截图</h2>
-            <div class="screenshots-grid">
-              <button v-for="(src, i) in project.screenshots" :key="i" class="screenshot-thumb" @click="openLightbox(i)">
-                <img :src="src" :alt="project.name + ' 截图 ' + (i+1)" />
-              </button>
+            <div class="carousel-wrap">
+              <button class="carousel-btn carousel-btn-left" @click="scrollScreenshots(-1)" :disabled="!canScrollLeft" :class="{ hidden: !canScrollLeft }">&#8249;</button>
+              <div class="screenshots-track" ref="trackRef" @scroll="updateCarouselState">
+                <button v-for="(src, i) in project.screenshots" :key="i" class="screenshot-thumb" @click="openLightbox(i)">
+                  <img :src="src" :alt="project.name + ' 截图 ' + (i+1)" />
+                </button>
+              </div>
+              <button class="carousel-btn carousel-btn-right" @click="scrollScreenshots(1)" :disabled="!canScrollRight" :class="{ hidden: !canScrollRight }">&#8250;</button>
             </div>
           </section>
 
           <!-- Lightbox -->
           <Teleport to="body">
             <div v-if="lightboxIndex >= 0" class="lightbox-overlay" @click.self="closeLightbox">
-              <button class="lightbox-close" @click="closeLightbox">&times;</button>
-              <button class="lightbox-prev" @click="prevImage">&#8249;</button>
-              <img :src="project.screenshots[lightboxIndex]" class="lightbox-img" />
-              <button class="lightbox-next" @click="nextImage">&#8250;</button>
-              <div class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ project.screenshots.length }}</div>
+              <button class="lightbox-close" @click="closeLightbox" aria-label="关闭">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+              <div class="lightbox-container">
+                <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-prev" @click="prevImage" aria-label="上一张">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+                </button>
+                <img :src="lightboxImages[lightboxIndex]" class="lightbox-img" alt="大图" />
+                <button v-if="lightboxImages.length > 1" class="lightbox-nav lightbox-next" @click="nextImage" aria-label="下一张">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
+              </div>
+              <div class="lightbox-footer">
+                <span class="lightbox-counter">{{ lightboxIndex + 1 }} / {{ lightboxImages.length }}</span>
+              </div>
             </div>
           </Teleport>
 
@@ -115,7 +129,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSiteConfigStore } from '@/stores/siteConfig'
 import { useScrollReveal } from '@/composables/useScrollReveal'
@@ -128,10 +142,43 @@ const project = computed(() => page?.content?.projects?.find((p) => p.slug === r
 useScrollReveal()
 
 const lightboxIndex = ref(-1)
-function openLightbox(i) { lightboxIndex.value = i }
-function closeLightbox() { lightboxIndex.value = -1 }
-function prevImage() { lightboxIndex.value = (lightboxIndex.value - 1 + project.value.screenshots.length) % project.value.screenshots.length }
-function nextImage() { lightboxIndex.value = (lightboxIndex.value + 1) % project.value.screenshots.length }
+const lightboxImages = ref([])
+const trackRef = ref(null)
+const canScrollLeft = ref(false)
+const canScrollRight = ref(true)
+
+function openLightbox(i) {
+  lightboxImages.value = project.value?.screenshots || []
+  lightboxIndex.value = i
+}
+function openImageLightbox(url) {
+  lightboxImages.value = [url, ...(project.value?.screenshots || [])]
+  lightboxIndex.value = 0
+}
+function closeLightbox() { lightboxIndex.value = -1; lightboxImages.value = [] }
+function prevImage() { if (lightboxImages.value.length) lightboxIndex.value = (lightboxIndex.value - 1 + lightboxImages.value.length) % lightboxImages.value.length }
+function nextImage() { if (lightboxImages.value.length) lightboxIndex.value = (lightboxIndex.value + 1) % lightboxImages.value.length }
+
+function scrollScreenshots(dir) {
+  const el = trackRef.value
+  if (!el) return
+  el.scrollBy({ left: el.clientWidth * 0.6 * dir, behavior: 'smooth' })
+}
+function updateCarouselState() {
+  const el = trackRef.value
+  if (!el) return
+  canScrollLeft.value = el.scrollLeft > 10
+  canScrollRight.value = el.scrollLeft < el.scrollWidth - el.clientWidth - 10
+}
+
+function onKeydown(e) {
+  if (lightboxIndex.value < 0) return
+  if (e.key === 'Escape') closeLightbox()
+  if (e.key === 'ArrowLeft') prevImage()
+  if (e.key === 'ArrowRight') nextImage()
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 const colors = ['var(--warm-terracotta)', 'var(--warm-amber)', 'var(--warm-coral)', 'var(--warm-sage)', 'var(--warm-brown)']
 function avatarColor(name) {
@@ -417,11 +464,16 @@ function avatarColor(name) {
   font-size: 1.2rem;
   margin-bottom: 20px;
 }
-.screenshots-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+.carousel-wrap { position: relative; display: flex; align-items: center; }
+.screenshots-track {
+  display: flex;
   gap: 12px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  flex: 1;
 }
+.screenshots-track::-webkit-scrollbar { display: none; }
 .screenshot-thumb {
   border: none;
   padding: 0;
@@ -431,44 +483,89 @@ function avatarColor(name) {
   border: 1px solid var(--glass-border);
   transition: transform 0.2s, box-shadow 0.2s;
   background: none;
+  flex-shrink: 0;
+  width: 220px;
 }
 .screenshot-thumb:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
 }
 .screenshot-thumb img {
-  width: 100%;
+  width: 220px;
   height: 160px;
   object-fit: cover;
   display: block;
 }
+.carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.5);
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: opacity 0.2s, background 0.2s;
+}
+.carousel-btn:hover { background: rgba(0,0,0,0.75); }
+.carousel-btn:disabled { opacity: 0; pointer-events: none; }
+.carousel-btn.hidden { display: none; }
+.carousel-btn-left { left: -18px; }
+.carousel-btn-right { right: -18px; }
 
 /* Lightbox */
 .lightbox-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.85);
+  background: rgba(0,0,0,0.88);
   z-index: 9999;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(8px);
+  animation: lbFadeIn 0.2s ease;
+}
+@keyframes lbFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.lightbox-close {
+  position: absolute; top: 20px; right: 24px;
+  background: rgba(255,255,255,0.1); border: none; color: white;
+  width: 44px; height: 44px; border-radius: 50%;
+  cursor: pointer; z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
+}
+.lightbox-close:hover { background: rgba(255,255,255,0.25); }
+.lightbox-container {
+  position: relative; display: flex; align-items: center;
+  gap: 12px; max-width: 92vw;
 }
 .lightbox-img {
-  max-width: 90vw;
-  max-height: 85vh;
-  border-radius: 8px;
-  object-fit: contain;
+  max-width: 85vw; max-height: 82vh;
+  border-radius: 12px; object-fit: contain;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  user-select: none;
 }
-.lightbox-close {
-  position: absolute;
-  top: 20px;
-  right: 24px;
-  background: none;
-  border: none;
-  color: white;
-  font-size: 36px;
-  cursor: pointer;
-  z-index: 1;
+.lightbox-nav {
+  flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%;
+  background: rgba(255,255,255,0.12); border: none; color: white;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+}
+.lightbox-nav:hover { background: rgba(255,255,255,0.25); transform: scale(1.1); }
+.lightbox-footer {
+  position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
+}
+.lightbox-counter {
+  color: rgba(255,255,255,0.6); font-size: 14px;
+  background: rgba(0,0,0,0.4); padding: 4px 16px; border-radius: 999px;
+  font-variant-numeric: tabular-nums;
 }
 .lightbox-prev, .lightbox-next {
   position: absolute;
