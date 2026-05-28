@@ -42,6 +42,10 @@
               <input v-model="form.email" type="email" placeholder="邮箱地址" @blur="validateField('email')" />
               <small v-if="errors.email" class="error-msg">{{ errors.email }}</small>
             </label>
+            <label class="full">
+              <span>届数（选填）</span>
+              <input v-model="form.session" type="text" placeholder="如：2026秋" />
+            </label>
           </div>
           <div class="form-actions">
             <button class="btn btn-primary" @click="nextStep0">下一步</button>
@@ -94,6 +98,7 @@
               <div class="confirm-item"><span>年级专业</span><strong>{{ form.grade_major }}</strong></div>
               <div class="confirm-item"><span>手机</span><strong>{{ form.phone }}</strong></div>
               <div class="confirm-item"><span>邮箱</span><strong>{{ form.email }}</strong></div>
+              <div class="confirm-item" v-if="form.session"><span>届数</span><strong>{{ form.session }}</strong></div>
               <div class="confirm-item"><span>意向组别</span><strong>{{ form.group_name }}</strong></div>
               <div class="confirm-item" v-if="form.motivation"><span>申请动机</span><strong>{{ form.motivation }}</strong></div>
             </div>
@@ -143,7 +148,7 @@ const submitResult = ref(null)
 const form = reactive({
   name: '', student_id: '', grade_major: '', phone: '', email: '',
   group_id: '', group_name: '', github_url: '', portfolio_url: '',
-  experience: '', motivation: '',
+  experience: '', motivation: '', session: '',
 })
 
 const errors = reactive({

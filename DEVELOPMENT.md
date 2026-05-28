@@ -401,7 +401,7 @@ pip install -r requirements.txt
 python app.py     # 启动 Flask 服务 (localhost:5000)
 ```
 
-默认管理员账号：`admin` / `admin123`
+
 
 ---
 

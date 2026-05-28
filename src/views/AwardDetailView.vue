@@ -6,26 +6,32 @@
         返回项目列表
       </router-link>
 
-      <div class="award-header reveal">
-        <img v-if="award.image" :src="award.image" :alt="award.title" class="award-image" />
-        <div class="award-medal">
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-            <circle cx="20" cy="16" r="12" fill="var(--warm-amber)" opacity="0.15"/>
-            <path d="M20 4l4 9h9l-7 5.5 2.5 9L20 22l-8.5 5.5 2.5-9-7-5.5h9l4-9z" fill="var(--warm-amber)"/>
-          </svg>
+      <div class="award-header reveal" :class="{ 'has-image': award.image }" :style="award.image ? { backgroundImage: 'url(' + award.image + ')' } : {}">
+        <div class="award-header-overlay"></div>
+        <div class="award-header-content">
+          <div class="award-medal">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+              <circle cx="20" cy="16" r="12" fill="var(--warm-amber)" opacity="0.15"/>
+              <path d="M20 4l4 9h9l-7 5.5 2.5 9L20 22l-8.5 5.5 2.5-9-7-5.5h9l4-9z" fill="var(--warm-amber)"/>
+            </svg>
+          </div>
+          <span class="tag tag-accent">{{ award.category }}</span>
+          <h1>{{ award.title }}</h1>
+          <p class="award-desc">{{ award.description }}</p>
         </div>
-        <span class="tag tag-accent">{{ award.category }}</span>
-        <h1>{{ award.title }}</h1>
-        <p class="award-desc">{{ award.description }}</p>
       </div>
 
-      <!-- 图片画廊 -->
+      <!-- 截图画廊 - 左右轮播 -->
       <section v-if="award.screenshots?.length" class="screenshots-section reveal">
         <h2>相关图片</h2>
-        <div class="screenshots-grid">
-          <button v-for="(src, i) in award.screenshots" :key="i" class="screenshot-thumb" @click="openLightbox(i)">
-            <img :src="src" :alt="award.title + ' 图片 ' + (i+1)" />
-          </button>
+        <div class="carousel-wrap">
+          <button class="carousel-btn carousel-btn-left" @click="scrollScreenshots(-1)" :disabled="!canScrollLeft" :class="{ hidden: !canScrollLeft }">&#8249;</button>
+          <div class="screenshots-track" ref="trackRef" @scroll="updateCarouselState">
+            <button v-for="(src, i) in award.screenshots" :key="i" class="screenshot-thumb" @click="openLightbox(i)">
+              <img :src="src" :alt="award.title + ' 图片 ' + (i+1)" />
+            </button>
+          </div>
+          <button class="carousel-btn carousel-btn-right" @click="scrollScreenshots(1)" :disabled="!canScrollRight" :class="{ hidden: !canScrollRight }">&#8250;</button>
         </div>
       </section>
 
@@ -121,10 +127,27 @@ const memberAvatarMap = computed(() => {
 useScrollReveal()
 
 const lightboxIndex = ref(-1)
+const trackRef = ref(null)
+const canScrollLeft = ref(false)
+const canScrollRight = ref(true)
+
 function openLightbox(i) { lightboxIndex.value = i }
 function closeLightbox() { lightboxIndex.value = -1 }
 function prevImage() { lightboxIndex.value = (lightboxIndex.value - 1 + award.value.screenshots.length) % award.value.screenshots.length }
 function nextImage() { lightboxIndex.value = (lightboxIndex.value + 1) % award.value.screenshots.length }
+
+function scrollScreenshots(dir) {
+  const el = trackRef.value
+  if (!el) return
+  el.scrollBy({ left: el.clientWidth * 0.6 * dir, behavior: 'smooth' })
+}
+
+function updateCarouselState() {
+  const el = trackRef.value
+  if (!el) return
+  canScrollLeft.value = el.scrollLeft > 10
+  canScrollRight.value = el.scrollLeft < el.scrollWidth - el.clientWidth - 10
+}
 
 const colors = ['var(--warm-terracotta)', 'var(--warm-amber)', 'var(--warm-coral)', 'var(--warm-sage)', 'var(--warm-brown)']
 function avatarColor(name) {
@@ -151,12 +174,18 @@ function avatarColor(name) {
 .award-header {
   text-align: center;
   margin-bottom: 40px;
-  padding: 48px 32px;
+  padding: 0;
   background: #fff;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   position: relative;
   overflow: hidden;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
 }
 
 .award-header::before {
@@ -167,22 +196,42 @@ function avatarColor(name) {
   right: 0;
   height: 3px;
   background: var(--grad-primary);
+  z-index: 2;
+}
+
+.award-header.has-image { border-color: transparent; }
+
+.award-header-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1;
+}
+
+.award-header.has-image .award-header-overlay {
+  background: rgba(0,0,0,0.55);
+}
+
+.award-header-content {
+  position: relative;
+  z-index: 2;
+  padding: 48px 32px;
+  max-width: 700px;
 }
 
 .award-medal {
   margin-bottom: 16px;
 }
-.award-image {
-  max-width: 400px;
-  width: 100%;
-  border-radius: var(--radius-md);
-  margin-bottom: 16px;
-  object-fit: cover;
-}
 
 .award-header h1 {
   font-size: clamp(1.5rem, 3.5vw, 2.2rem);
   margin: 12px 0;
+}
+
+.award-header.has-image h1,
+.award-header.has-image .award-desc {
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 
 .award-desc {
@@ -352,7 +401,7 @@ function avatarColor(name) {
 }
 .participant-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-/* 图片画廊 */
+/* 截图轮播 */
 .screenshots-section {
   background: #fff;
   border: 1px solid var(--glass-border);
@@ -366,11 +415,21 @@ function avatarColor(name) {
   font-size: 1.2rem;
   margin-bottom: 20px;
 }
-.screenshots-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+.carousel-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
+.screenshots-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+  flex: 1;
+}
+.screenshots-track::-webkit-scrollbar { display: none; }
 .screenshot-thumb {
   border: none;
   padding: 0;
@@ -380,17 +439,42 @@ function avatarColor(name) {
   border: 1px solid var(--glass-border);
   transition: transform 0.2s, box-shadow 0.2s;
   background: none;
+  flex-shrink: 0;
+  width: 220px;
 }
 .screenshot-thumb:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
 }
 .screenshot-thumb img {
-  width: 100%;
+  width: 220px;
   height: 160px;
   object-fit: cover;
   display: block;
 }
+.carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.5);
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: opacity 0.2s, background 0.2s;
+}
+.carousel-btn:hover { background: rgba(0,0,0,0.75); }
+.carousel-btn:disabled { opacity: 0; pointer-events: none; }
+.carousel-btn.hidden { display: none; }
+.carousel-btn-left { left: -18px; }
+.carousel-btn-right { right: -18px; }
 
 /* Lightbox */
 .lightbox-overlay {

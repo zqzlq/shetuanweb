@@ -257,6 +257,7 @@ DEFAULT_SITE_CONFIG = {
         'mailFromName': '星雨作坊',
         'smtpUseSsl': True,
         'smtpUseTls': False,
+        'groupChatInviteLink': '',
     }
 }
 

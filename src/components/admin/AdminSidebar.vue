@@ -21,6 +21,12 @@
         <button class="nav-item" :class="{ active: activeSection === 'applications' }" @click="$emit('navigate', 'applications')">
           <span class="nav-label">申请管理</span>
         </button>
+        <button class="nav-item" :class="{ active: activeSection === 'users' }" @click="$emit('navigate', 'users')">
+          <span class="nav-label">用户管理</span>
+        </button>
+        <button class="nav-item" :class="{ active: activeSection === 'submissions' }" @click="$emit('navigate', 'submissions')">
+          <span class="nav-label">提交审核</span>
+        </button>
       </div>
     </nav>
   </aside>

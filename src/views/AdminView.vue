@@ -72,6 +72,12 @@
 
           <!-- 申请管理 -->
           <ApplicationsManager v-if="activeSection === 'applications'" />
+
+          <!-- 用户管理 -->
+          <UserManager v-if="activeSection === 'users'" @refresh="loadPages" />
+
+          <!-- 提交审核 -->
+          <SubmissionManager v-if="activeSection === 'submissions'" />
         </div>
       </div>
     </div>
@@ -90,6 +96,8 @@ import ProductsEditor from '@/components/admin/editors/ProductsEditor.vue'
 import OpenSourceEditor from '@/components/admin/editors/OpenSourceEditor.vue'
 import FooterEditor from '@/components/admin/editors/FooterEditor.vue'
 import PagesEditor from '@/components/admin/PagesEditor.vue'
+import UserManager from '@/components/admin/UserManager.vue'
+import SubmissionManager from '@/components/admin/SubmissionManager.vue'
 import ApplicationsManager from '@/components/admin/ApplicationsManager.vue'
 import SystemSettingsEditor from '@/components/admin/SystemSettingsEditor.vue'
 
@@ -141,6 +149,14 @@ async function loadData() {
     pages.value = await getAdminPages()
   } catch (e) {
     console.error('加载数据失败', e)
+  }
+}
+
+async function loadPages() {
+  try {
+    pages.value = await getAdminPages()
+  } catch (e) {
+    console.error('加载页面数据失败', e)
   }
 }
 

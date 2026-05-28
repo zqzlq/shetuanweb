@@ -17,9 +17,28 @@
           <label class="field"><span>姓名</span><input :value="m.name" @input="updateMember(i, 'name', $event.target.value)" /></label>
           <label class="field"><span>角色</span><input :value="m.role" @input="updateMember(i, 'role', $event.target.value)" /></label>
           <label class="field"><span>组别</span><input :value="m.group" @input="updateMember(i, 'group', $event.target.value)" /></label>
-          <label class="field"><span>技能（逗号分隔）</span><input :value="m.skills?.join(', ')" @input="updateMember(i, 'skills', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
+          <label class="field"><span>技能（逗号分隔）</span><input :value="m.skills?.join(', ')" @change="updateMember(i, 'skills', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
           <label class="field full"><span>头像</span><ImageUploadField :modelValue="m.avatar || ''" @update:modelValue="updateMember(i, 'avatar', $event)" /></label>
           <label class="field full"><span>描述</span><textarea :value="m.description" @input="updateMember(i, 'description', $event.target.value)" rows="2"></textarea></label>
+        </div>
+        <div class="social-links-editor">
+          <div class="social-header">
+            <span class="sub-title">社交链接</span>
+            <button class="btn btn-outline btn-xs" @click="addSocialLink(i)">+ 添加</button>
+          </div>
+          <div v-for="(link, li) in m.socialLinks || []" :key="li" class="social-row">
+            <select :value="link.platform" @change="updateSocialLink(i, li, 'platform', $event.target.value)" class="platform-select">
+              <option value="github">GitHub</option>
+              <option value="bilibili">B站</option>
+              <option value="zhihu">知乎</option>
+              <option value="blog">博客</option>
+              <option value="douyin">抖音</option>
+              <option value="weibo">微博</option>
+              <option value="other">其他</option>
+            </select>
+            <input :value="link.url" @input="updateSocialLink(i, li, 'url', $event.target.value)" placeholder="链接地址" class="social-url" />
+            <button class="btn-icon" @click="removeSocialLink(i, li)">&times;</button>
+          </div>
         </div>
       </div>
     </div>
@@ -49,7 +68,25 @@ function updateMember(i, k, v) {
   members[i] = { ...members[i], [k]: v }
   up({ ...c(), members })
 }
-function addMember() { up({ ...c(), members: [...(c().members || []), { name: '', role: '', group: '', avatar: '', description: '', skills: [], links: { github: '', portfolio: '' }, projects: [] }] }) }
+function addMember() { up({ ...c(), members: [...(c().members || []), { name: '', role: '', group: '', avatar: '', description: '', skills: [], socialLinks: [], projects: [] }] }) }
+
+function addSocialLink(mi) {
+  const members = [...(c().members || [])]
+  members[mi] = { ...members[mi], socialLinks: [...(members[mi].socialLinks || []), { platform: 'github', url: '' }] }
+  up({ ...c(), members })
+}
+function removeSocialLink(mi, li) {
+  const members = [...(c().members || [])]
+  members[mi] = { ...members[mi], socialLinks: (members[mi].socialLinks || []).filter((_, i) => i !== li) }
+  up({ ...c(), members })
+}
+function updateSocialLink(mi, li, key, value) {
+  const members = [...(c().members || [])]
+  const links = [...(members[mi].socialLinks || [])]
+  links[li] = { ...links[li], [key]: value }
+  members[mi] = { ...members[mi], socialLinks: links }
+  up({ ...c(), members })
+}
 function removeMember(i) { up({ ...c(), members: (c().members || []).filter((_, idx) => idx !== i) }) }
 
 function updateStat(i, k, v) {
@@ -83,6 +120,13 @@ function removeStat(i) { up({ ...c(), stats: (c().stats || []).filter((_, idx) =
 .btn-icon { width: 24px; height: 24px; border: 1px solid var(--glass-border); border-radius: 4px; background: white; color: var(--text-muted); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .btn-icon:hover { color: #e05050; border-color: #e05050; }
 .btn-xs { padding: 3px 10px; font-size: 11px; }
+.social-links-editor { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--glass-border); }
+.social-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sub-title { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.social-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.platform-select { padding: 6px 8px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; width: 90px; }
+.social-url { flex: 1; padding: 7px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; background: white; }
+.social-url:focus { outline: none; border-color: var(--warm-terracotta); }
 
 @media (max-width: 768px) {
   .editor-card { padding: 12px; }

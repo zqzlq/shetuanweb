@@ -77,6 +77,11 @@ const routes = [
     component: () => import('@/views/AdminView.vue'),
   },
   {
+    path: '/user',
+    name: 'user',
+    component: () => import('@/views/UserDashboard.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/',
   },

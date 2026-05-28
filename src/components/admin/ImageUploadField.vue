@@ -2,7 +2,7 @@
   <div class="image-field">
     <div v-if="modelValue" class="image-preview">
       <img :src="modelValue" alt="预览" />
-      <button class="btn-icon remove-btn" @click.stop="handleRemove" title="删除图片">&times;</button>
+      <button class="remove-btn" @click.stop="handleRemove" title="删除图片">&times; 删除</button>
     </div>
     <div class="image-actions">
       <label class="btn btn-outline btn-sm upload-btn">
@@ -67,8 +67,8 @@ async function handleUpload(e) {
 .image-field { display: flex; flex-direction: column; gap: 8px; }
 .image-preview { position: relative; display: inline-block; max-width: 240px; }
 .image-preview img { width: 100%; border-radius: 8px; border: 1px solid var(--glass-border); object-fit: cover; }
-.remove-btn { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.5); color: white; border: none; width: 24px; height: 24px; border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.remove-btn:hover { background: rgba(224,80,80,0.8); }
+.remove-btn { position: absolute; top: 6px; right: 6px; background: rgba(224,80,80,0.85); color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 2px; white-space: nowrap; z-index: 1; }
+.remove-btn:hover { background: #e05050; }
 .image-actions { display: flex; align-items: center; gap: 8px; }
 .upload-btn { cursor: pointer; }
 .divider { font-size: 12px; color: var(--text-muted); }

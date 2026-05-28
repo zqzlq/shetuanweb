@@ -63,6 +63,113 @@ export async function submitApplication(payload) {
   })
 }
 
+// ─── User Auth API ───
+
+const USER_TOKEN_KEY = 'xingyu_user_token'
+
+async function userRequest(url, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  const token = localStorage.getItem(USER_TOKEN_KEY)
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  try {
+    const res = await fetch(`${API_BASE}${url}`, { ...options, headers })
+    if (res.status === 401 || res.status === 422) {
+      localStorage.removeItem(USER_TOKEN_KEY)
+      throw { status: res.status, message: '认证失效，请重新登录' }
+    }
+    const data = await res.json()
+    if (!res.ok) throw { status: res.status, message: data.message || '请求失败' }
+    return data
+  } catch (err) {
+    if (err.status) throw err
+    throw { status: 0, message: '网络错误，请检查后端服务是否启动' }
+  }
+}
+
+export async function userRegister(payload) {
+  return request('/auth/register', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function userLogin(username, password) {
+  const data = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+  if (data.token) localStorage.setItem(USER_TOKEN_KEY, data.token)
+  return data
+}
+
+export function userLogout() {
+  localStorage.removeItem(USER_TOKEN_KEY)
+}
+
+export function isUserLoggedIn() {
+  return !!localStorage.getItem(USER_TOKEN_KEY)
+}
+
+export function getUserToken() {
+  return localStorage.getItem(USER_TOKEN_KEY)
+}
+
+export async function getCurrentMemberUser() {
+  return userRequest('/auth/me')
+}
+
+export async function changePassword(old_password, new_password) {
+  return userRequest('/auth/password', { method: 'PATCH', body: JSON.stringify({ old_password, new_password }) })
+}
+
+export async function updateUserProfile(payload) {
+  return userRequest('/auth/profile', { method: 'PATCH', body: JSON.stringify(payload) })
+}
+
+export async function submitUserSubmission(payload) {
+  return userRequest('/auth/submission', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function getUserSubmissions() {
+  return userRequest('/auth/submissions')
+}
+
+export async function deleteUserSubmission(id) {
+  return userRequest(`/auth/submission/${id}`, { method: 'DELETE' })
+}
+
+// ─── Admin: Users & Submissions ───
+
+export async function getUsers(status = 'all') {
+  return request(`/admin/users?status=${status}`)
+}
+
+export async function updateUser(id, payload) {
+  return request(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+}
+
+export async function getSubmissions(status = 'all') {
+  return request(`/admin/submissions?status=${status}`)
+}
+
+export async function updateSubmission(id, payload) {
+  return request(`/admin/submissions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+}
+
+export async function deleteUser(id) {
+  return request(`/admin/users/${id}`, { method: 'DELETE' })
+}
+
+export async function batchUpdateUsers(payload) {
+  return request('/admin/users/batch', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function syncUserToMember(id) {
+  return request(`/admin/users/${id}/sync-member`, { method: 'POST' })
+}
+
+export async function syncSubmissionToPage(id) {
+  return request(`/admin/submissions/${id}/sync`, { method: 'POST' })
+}
+
 // ─── Admin API ───
 
 export async function login(username, password) {
@@ -128,12 +235,19 @@ export async function resetPage(slug) {
   return request(`/admin/pages/${slug}/reset`, { method: 'POST' })
 }
 
-export async function getApplications(status = 'all') {
-  return request(`/admin/applications?status=${status}`)
+export async function getApplications(status = 'all', session = '') {
+  const params = new URLSearchParams()
+  params.set('status', status)
+  if (session) params.set('session', session)
+  return request(`/admin/applications?${params.toString()}`)
 }
 
 export async function updateApplication(id, payload) {
   return request(`/admin/applications/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+}
+
+export async function batchUpdateApplications(payload) {
+  return request('/admin/applications/batch', { method: 'POST', body: JSON.stringify(payload) })
 }
 
 export async function deleteApplication(id) {

@@ -27,6 +27,8 @@ def create_app(config_name=None):
     with app.app_context():
         db.create_all()
         _migrate_columns(app)
+        _migrate_member_users(app)
+        _migrate_user_submissions(app)
         _seed_defaults()
         _load_mail_config(app)
 
@@ -78,6 +80,7 @@ def _migrate_columns(app):
         ('applications', 'last_email_error', 'VARCHAR(500)'),
         ('applications', 'last_email_sent_at', 'DATETIME'),
         ('applications', 'feishu_delivery_mode', 'VARCHAR(20)'),
+        ('applications', 'session', 'VARCHAR(50)'),
     ]
     with app.app_context():
         try:
@@ -88,6 +91,47 @@ def _migrate_columns(app):
                         conn.commit()
                     except Exception:
                         pass  # column already exists
+        except Exception:
+            pass
+
+    # 迁移旧状态：processed → approved
+    with app.app_context():
+        try:
+            with db.engine.connect() as conn:
+                result = conn.execute(db.text("UPDATE applications SET status = 'approved' WHERE status = 'processed'"))
+                if result.rowcount > 0:
+                    conn.commit()
+        except Exception:
+            pass
+
+
+def _migrate_member_users(app):
+    """Ensure member_users table exists and add missing columns."""
+    mu_columns = [
+        ('member_users', 'group_name', 'VARCHAR(100)'),
+    ]
+    with app.app_context():
+        try:
+            db.create_all()
+        except Exception:
+            pass
+        try:
+            with db.engine.connect() as conn:
+                for table, col, col_type in mu_columns:
+                    try:
+                        conn.execute(db.text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type}'))
+                        conn.commit()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+
+def _migrate_user_submissions(app):
+    """Ensure user_submissions table exists."""
+    with app.app_context():
+        try:
+            db.create_all()
         except Exception:
             pass
 

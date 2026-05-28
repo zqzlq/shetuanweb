@@ -3,10 +3,11 @@ from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 from flask import Blueprint, jsonify, request, current_app, send_from_directory
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from sqlalchemy.orm.attributes import flag_modified
 
 import oss_service
 
-from models import db, SiteConfig, Page, Application, AdminUser
+from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission
 from defaults import DEFAULT_SITE_CONFIG, DEFAULT_PAGES
 
 api_bp = Blueprint('api', __name__)
@@ -85,6 +86,7 @@ def submit_application():
         portfolio_url=data.get('portfolio_url'),
         experience=data.get('experience'),
         motivation=data['motivation'],
+        session=data.get('session'),
         ip_address=ip,
     )
     db.session.add(app_record)
@@ -99,6 +101,179 @@ def submit_application():
         current_app.logger.exception('飞书通知失败')
 
     return jsonify({'success': True, 'message': '申请已提交', 'application': app_record.to_dict()}), 201
+
+
+# ─── User Auth ───
+
+@api_bp.route('/auth/register', methods=['POST'])
+def user_register():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'bad_request', 'message': '请求体为空'}), 400
+
+    required = ['username', 'email', 'password', 'name']
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({'error': 'validation_error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
+
+    if len(data['username']) < 2:
+        return jsonify({'error': 'validation_error', 'message': '用户名至少 2 个字符'}), 400
+    if len(data['password']) < 6:
+        return jsonify({'error': 'validation_error', 'message': '密码至少 6 位'}), 400
+
+    if MemberUser.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'conflict', 'message': '用户名已被使用'}), 400
+    if MemberUser.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'conflict', 'message': '邮箱已被注册'}), 400
+
+    user = MemberUser(
+        username=data['username'],
+        email=data['email'],
+        name=data['name'],
+        student_id=data.get('student_id', ''),
+        phone=data.get('phone', ''),
+    )
+    user.set_password(data['password'])
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '注册成功，请等待管理员审核', 'user': user.to_dict()}), 201
+
+
+@api_bp.route('/auth/login', methods=['POST'])
+def user_login():
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'error': 'bad_request', 'message': '请输入用户名和密码'}), 400
+
+    user = MemberUser.query.filter_by(username=data['username']).first()
+    if not user or not user.check_password(data['password']):
+        return jsonify({'error': 'auth_failed', 'message': '用户名或密码错误'}), 401
+
+    if user.status == 'pending':
+        return jsonify({'error': 'pending', 'message': '账号正在审核中，请等待管理员审核通过'}), 403
+    if user.status == 'rejected':
+        return jsonify({'error': 'rejected', 'message': '账号审核未通过'}), 403
+
+    token = create_access_token(identity='user_' + str(user.id))
+    return jsonify({'success': True, 'token': token, 'user': user.to_dict()})
+
+
+@api_bp.route('/auth/me', methods=['GET'])
+@jwt_required()
+def user_me():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+    return jsonify(user.to_dict())
+
+
+@api_bp.route('/auth/profile', methods=['PATCH'])
+@jwt_required()
+def user_update_profile():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+
+    data = request.get_json()
+    for field in ['name', 'bio', 'avatar', 'social_links', 'student_id', 'phone']:
+        if field in data:
+            setattr(user, field, data[field])
+    if 'group' in data:
+        user.group_name = data['group']
+
+    db.session.commit()
+    return jsonify({'success': True, 'user': user.to_dict()})
+
+
+@api_bp.route('/auth/password', methods=['PATCH'])
+@jwt_required()
+def user_change_password():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+
+    data = request.get_json()
+    if not data.get('old_password') or not data.get('new_password'):
+        return jsonify({'error': 'bad_request', 'message': '缺少旧密码或新密码'}), 400
+    if not user.check_password(data['old_password']):
+        return jsonify({'error': 'auth_failed', 'message': '旧密码不正确'}), 401
+    if len(data['new_password']) < 6:
+        return jsonify({'error': 'validation_error', 'message': '新密码至少 6 位'}), 400
+
+    user.set_password(data['new_password'])
+    db.session.commit()
+    return jsonify({'success': True, 'message': '密码已修改'})
+
+
+@api_bp.route('/auth/submission', methods=['POST'])
+@jwt_required()
+def user_submit():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+
+    data = request.get_json()
+    if not data.get('type') or not data.get('title'):
+        return jsonify({'error': 'bad_request', 'message': '缺少 type 或 title'}), 400
+
+    sub = UserSubmission(
+        user_id=user_id,
+        type=data['type'],
+        title=data['title'],
+        description=data.get('description', ''),
+        image=data.get('image', ''),
+        data=data.get('data'),
+    )
+    db.session.add(sub)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '提交成功，请等待管理员审核', 'submission': sub.to_dict()}), 201
+
+
+@api_bp.route('/auth/submissions', methods=['GET'])
+@jwt_required()
+def user_submissions():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+    subs = UserSubmission.query.filter_by(user_id=user_id).order_by(UserSubmission.created_at.desc()).all()
+    return jsonify([s.to_dict() for s in subs])
+
+
+@api_bp.route('/auth/submission/<int:sub_id>', methods=['DELETE'])
+@jwt_required()
+def user_delete_submission(sub_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+    sub = UserSubmission.query.get(sub_id)
+    if not sub:
+        return jsonify({'error': 'not_found', 'message': '提交不存在'}), 404
+    if sub.user_id != user_id:
+        return jsonify({'error': 'forbidden', 'message': '无权删除'}), 403
+
+    db.session.delete(sub)
+    db.session.commit()
+    return jsonify({'success': True, 'message': '提交已删除'})
 
 
 # ─── Admin: Auth ───
@@ -150,6 +325,15 @@ def admin_update_config():
             db.session.add(SiteConfig(config_key=key, config_value=value))
 
     db.session.commit()
+
+    # 如果更新了 system 配置，热加载邮件和飞书配置
+    if 'system' in data:
+        try:
+            from app import _load_mail_config
+            _load_mail_config(current_app._get_current_object())
+        except Exception:
+            current_app.logger.exception('热加载邮件配置失败')
+
     return jsonify({'success': True, 'message': '配置已更新'})
 
 
@@ -257,9 +441,12 @@ def admin_reset_page(slug):
 @jwt_required()
 def admin_get_applications():
     status = request.args.get('status', 'all')
+    session = request.args.get('session', '')
     query = Application.query
     if status != 'all':
         query = query.filter_by(status=status)
+    if session:
+        query = query.filter_by(session=session)
     apps = query.order_by(Application.created_at.desc()).all()
     return jsonify([a.to_dict() for a in apps])
 
@@ -276,6 +463,8 @@ def admin_update_application(app_id):
 
     if 'status' in data:
         app_record.status = data['status']
+        if data['status'] in ('approved', 'rejected'):
+            app_record.processed_at = datetime.now(timezone.utc)
     if 'admin_note' in data:
         app_record.admin_note = data['admin_note']
 
@@ -295,12 +484,68 @@ def admin_update_application(app_id):
         if data['status'] in ('approved', 'rejected'):
             try:
                 from application_flow import send_status_email
-                send_status_email(app_record, 'result')
+                group_link = data.get('group_link', None)
+                qr_code_url = data.get('qr_code_url', None)
+                send_status_email(app_record, 'result', group_link, qr_code_url)
                 db.session.commit()
             except Exception:
                 current_app.logger.exception('邮件发送失败')
 
     return jsonify({'success': True, 'message': '申请已更新', 'application': app_record.to_dict()})
+
+
+@api_bp.route('/admin/applications/batch', methods=['POST'])
+@jwt_required()
+def admin_batch_update_applications():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'bad_request', 'message': '请求体为空'}), 400
+
+    ids = data.get('ids', [])
+    new_status = data.get('status')
+    admin_note = data.get('admin_note')
+    group_link = data.get('group_link')
+    qr_code_url = data.get('qr_code_url')
+
+    if not ids or not new_status:
+        return jsonify({'error': 'bad_request', 'message': '缺少 ids 或 status'}), 400
+
+    updated = []
+    for app_id in ids:
+        app_record = Application.query.get(app_id)
+        if not app_record:
+            continue
+
+        old_status = app_record.status
+        app_record.status = new_status
+        if new_status in ('approved', 'rejected'):
+            app_record.processed_at = datetime.now(timezone.utc)
+        if admin_note:
+            app_record.admin_note = admin_note
+
+        db.session.commit()
+
+        # 飞书通知
+        if new_status != old_status:
+            try:
+                from application_flow import send_status_update_card
+                send_status_update_card(app_record)
+                db.session.commit()
+            except Exception:
+                current_app.logger.exception('飞书状态更新通知失败')
+
+            # 邮件通知
+            if new_status in ('approved', 'rejected'):
+                try:
+                    from application_flow import send_status_email
+                    send_status_email(app_record, 'result', group_link, qr_code_url)
+                    db.session.commit()
+                except Exception:
+                    current_app.logger.exception('邮件发送失败')
+
+        updated.append(app_record.to_dict())
+
+    return jsonify({'success': True, 'message': f'已更新 {len(updated)} 条申请', 'updated': updated})
 
 
 @api_bp.route('/admin/applications/<int:app_id>', methods=['DELETE'])
@@ -313,6 +558,238 @@ def admin_delete_application(app_id):
     db.session.delete(app_record)
     db.session.commit()
     return jsonify({'success': True, 'message': '申请已删除'})
+
+
+# ─── Admin: Users ───
+
+@api_bp.route('/admin/users', methods=['GET'])
+@jwt_required()
+def admin_get_users():
+    status = request.args.get('status', 'all')
+    query = MemberUser.query
+    if status != 'all':
+        query = query.filter_by(status=status)
+    users = query.order_by(MemberUser.created_at.desc()).all()
+    return jsonify([u.to_dict() for u in users])
+
+
+@api_bp.route('/admin/users/<int:user_id>', methods=['PATCH'])
+@jwt_required()
+def admin_update_user(user_id):
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+
+    data = request.get_json()
+    if 'status' in data:
+        user.status = data['status']
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': '用户已更新', 'user': user.to_dict()})
+
+
+@api_bp.route('/admin/users/<int:user_id>', methods=['DELETE'])
+@jwt_required()
+def admin_delete_user(user_id):
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+    # 如果该用户已同步到成员页，移除
+    _remove_member_from_page(user.name or user.username)
+    # 删除提交
+    UserSubmission.query.filter_by(user_id=user_id).delete()
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'success': True, 'message': '用户及关联提交已删除'})
+
+
+@api_bp.route('/admin/users/batch', methods=['POST'])
+@jwt_required()
+def admin_batch_users():
+    data = request.get_json()
+    ids = data.get('ids', [])
+    action = data.get('action', 'disable')
+    if not ids:
+        return jsonify({'error': 'bad_request', 'message': '缺少 ids'}), 400
+
+    updated = 0
+    for user_id in ids:
+        user = MemberUser.query.get(user_id)
+        if not user:
+            continue
+        if action == 'disable':
+            user.status = 'rejected'
+            updated += 1
+        elif action == 'add-to-members':
+            page = Page.query.filter_by(slug='members').first()
+            if page and isinstance(page.content, dict):
+                members = page.content.get('members', [])
+                display_name = user.name or user.username
+                if not any(m.get('name') == display_name for m in members):
+                    members.append({
+                        'name': display_name, 'role': '', 'group': '',
+                        'avatar': user.avatar or '', 'description': user.bio or '',
+                        'skills': [], 'socialLinks': user.social_links or [], 'projects': [],
+                    })
+                    page.content['members'] = members
+                    flag_modified(page, 'content')
+                    updated += 1
+        elif action == 'delete':
+            _remove_member_from_page(user.name or user.username)
+            UserSubmission.query.filter_by(user_id=user_id).delete()
+            db.session.delete(user)
+            updated += 1
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'已处理 {updated} 个用户'})
+
+
+@api_bp.route('/admin/users/<int:user_id>/sync-member', methods=['POST'])
+@jwt_required()
+def admin_sync_user_to_member(user_id):
+    user = MemberUser.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'not_found', 'message': '用户不存在'}), 404
+
+    # 找到 members 页面
+    page = Page.query.filter_by(slug='members').first()
+    if not page or not isinstance(page.content, dict):
+        return jsonify({'error': 'not_found', 'message': '成员页面不存在'}), 404
+
+    members = page.content.get('members', [])
+    display_name = user.name or user.username
+    # 检查是否已存在同名成员
+    if any(m.get('name') == display_name for m in members):
+        return jsonify({'error': 'conflict', 'message': '该用户已在成员列表中'}), 400
+
+    members.append({
+        'name': display_name,
+        'role': '',
+        'group': user.group_name or '',
+        'avatar': user.avatar or '',
+        'description': user.bio or '',
+        'skills': [],
+        'socialLinks': user.social_links or [],
+        'projects': [],
+    })
+    page.content['members'] = members
+    flag_modified(page, 'content')
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'{user.name} 已添加到成员页面'})
+
+
+# ─── Admin: Submissions ───
+
+@api_bp.route('/admin/submissions', methods=['GET'])
+@jwt_required()
+def admin_get_submissions():
+    status = request.args.get('status', 'all')
+    query = UserSubmission.query
+    if status != 'all':
+        query = query.filter_by(status=status)
+    subs = query.order_by(UserSubmission.created_at.desc()).all()
+    return jsonify([s.to_dict() for s in subs])
+
+
+@api_bp.route('/admin/submissions/<int:sub_id>', methods=['PATCH'])
+@jwt_required()
+def admin_update_submission(sub_id):
+    sub = UserSubmission.query.get(sub_id)
+    if not sub:
+        return jsonify({'error': 'not_found', 'message': '提交不存在'}), 404
+
+    data = request.get_json()
+    if 'status' in data:
+        sub.status = data['status']
+
+    db.session.commit()
+
+    # 审核通过后自动同步到页面
+    if 'status' in data and data['status'] == 'approved':
+        sync_submission_to_page(sub)
+
+    return jsonify({'success': True, 'message': '提交已更新', 'submission': sub.to_dict()})
+
+
+def _remove_member_from_page(name):
+    """从成员页面删除同名成员"""
+    try:
+        page = Page.query.filter_by(slug='members').first()
+        if page and isinstance(page.content, dict):
+            members = page.content.get('members', [])
+            before = len(members)
+            members = [m for m in members if m.get('name') != name]
+            if len(members) < before:
+                page.content['members'] = members
+                flag_modified(page, 'content')
+                db.session.commit()
+    except Exception:
+        pass
+
+
+def sync_submission_to_page(sub):
+    """将审核通过的提交同步到对应页面"""
+    page = Page.query.filter_by(slug='projects').first()
+    if not page or not isinstance(page.content, dict):
+        return
+
+    extra = sub.data or {}
+
+    if sub.type == 'award':
+        awards = page.content.get('awards', {})
+        items = awards.get('items', [])
+        if not any(a.get('slug') == extra.get('slug') for a in items if extra.get('slug')):
+            items.append({
+                'slug': extra.get('slug', ''),
+                'title': extra.get('title', sub.title),
+                'shortDesc': extra.get('shortDesc', ''),
+                'description': extra.get('description', ''),
+                'longDescription': extra.get('longDescription', ''),
+                'level': extra.get('level', ''),
+                'date': extra.get('date', ''),
+                'category': extra.get('category', ''),
+                'participants': extra.get('participants', []),
+                'projectSlug': extra.get('projectSlug', ''),
+                'image': extra.get('image', sub.image or ''),
+                'screenshots': extra.get('screenshots', []),
+            })
+            awards['items'] = items
+            page.content['awards'] = awards
+
+    elif sub.type == 'project':
+        projects = page.content.get('projects', [])
+        if not any(p.get('slug') == extra.get('slug') for p in projects if extra.get('slug')):
+            projects.append({
+                'name': extra.get('name', sub.title),
+                'slug': extra.get('slug', ''),
+                'category': extra.get('category', ''),
+                'description': extra.get('description', ''),
+                'longDescription': extra.get('longDescription', ''),
+                'coverClass': extra.get('coverClass', 'aurora'),
+                'coverImage': extra.get('coverImage', sub.image or ''),
+                'screenshots': extra.get('screenshots', []),
+                'techStack': extra.get('techStack', []),
+                'githubUrl': extra.get('githubUrl', ''),
+                'link': extra.get('link', ''),
+                'status': 'active',
+                'featured': False,
+                'contributors': [],
+            })
+            page.content['projects'] = projects
+
+    flag_modified(page, 'content')
+    db.session.commit()
+
+
+@api_bp.route('/admin/submissions/<int:sub_id>/sync', methods=['POST'])
+@jwt_required()
+def admin_sync_submission(sub_id):
+    sub = UserSubmission.query.get(sub_id)
+    if not sub:
+        return jsonify({'error': 'not_found', 'message': '提交不存在'}), 404
+
+    sync_submission_to_page(sub)
+    return jsonify({'success': True, 'message': '已同步到页面'})
 
 
 # ─── Admin: Image Upload ───

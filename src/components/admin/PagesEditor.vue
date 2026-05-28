@@ -42,7 +42,7 @@
 
       <!-- JSON 模式 -->
       <div v-if="editMode === 'json'" class="json-editor">
-        <textarea v-model="jsonText" rows="20" class="json-textarea" :class="{ 'json-error': jsonError }"></textarea>
+        <textarea v-model="jsonText" rows="20" class="json-textarea" :class="{ 'json-error': jsonError }" @input="pageDirty = true"></textarea>
         <p v-if="jsonError" class="json-error-msg">{{ jsonError }}</p>
       </div>
 
@@ -68,6 +68,11 @@ import ProjectsPageEditor from './pages/ProjectsPageEditor.vue'
 import AwardsPageEditor from './pages/AwardsPageEditor.vue'
 import BlogPageEditor from './pages/BlogPageEditor.vue'
 import JoinPageEditor from './pages/JoinPageEditor.vue'
+import RecruitmentPageEditor from './pages/RecruitmentPageEditor.vue'
+import OpenSourcePageEditor from './pages/OpenSourcePageEditor.vue'
+import TimelinePageEditor from './pages/TimelinePageEditor.vue'
+import OnboardingPageEditor from './pages/OnboardingPageEditor.vue'
+import YujiPageEditor from './pages/YujiPageEditor.vue'
 
 const props = defineProps({ pages: Array })
 const emit = defineEmits(['update', 'reset'])
@@ -86,6 +91,11 @@ const pageEditors = {
   awards: AwardsPageEditor,
   blog: BlogPageEditor,
   join: JoinPageEditor,
+  recruitment: RecruitmentPageEditor,
+  'open-source': OpenSourcePageEditor,
+  timeline: TimelinePageEditor,
+  onboarding: OnboardingPageEditor,
+  yuji: YujiPageEditor,
 }
 
 // 子路由映射：slug → 可展开的子编辑器列表
@@ -153,9 +163,9 @@ function savePage() {
 </script>
 
 <style scoped>
-.pages-editor { display: flex; gap: 20px; min-height: 600px; }
+.pages-editor { display: flex; gap: 20px; height: 100%; }
 
-.pages-list { width: 240px; flex-shrink: 0; background: #fff; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); overflow: hidden; }
+.pages-list { width: 240px; flex-shrink: 0; background: #fff; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); overflow-y: auto; }
 .list-header { padding: 16px; border-bottom: 1px solid var(--glass-border); }
 .list-header h3 { font-family: var(--font-heading); font-size: 14px; font-weight: 600; margin: 0; }
 .page-item { display: block; width: 100%; padding: 12px 16px; border: none; background: none; text-align: left; cursor: pointer; border-bottom: 1px solid var(--glass-border); transition: background 0.15s; }
@@ -172,7 +182,7 @@ function savePage() {
 .sub-item { padding-left: 36px !important; border-bottom: none !important; font-size: 13px; }
 .sub-item .page-title { font-size: 12px; }
 
-.pages-detail { flex: 1; background: #fff; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 24px; min-width: 0; }
+.pages-detail { flex: 1; background: #fff; border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 24px; min-width: 0; max-height: calc(100vh - 160px); overflow-y: auto; }
 .detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
 .detail-info h3 { font-family: var(--font-heading); font-size: 16px; margin: 0; }
 .detail-slug { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
@@ -193,9 +203,9 @@ function savePage() {
 .btn-sm { padding: 6px 14px; font-size: 12px; }
 
 @media (max-width: 768px) {
-  .pages-editor { flex-direction: column; min-height: auto; }
-  .pages-list { width: 100%; max-height: 200px; overflow-y: auto; }
-  .pages-detail { padding: 16px; }
+  .pages-editor { flex-direction: column; height: auto; }
+  .pages-list { width: 100%; max-height: 200px; }
+  .pages-detail { padding: 16px; max-height: none; }
   .detail-header { flex-direction: column; align-items: flex-start; }
   .detail-actions { width: 100%; flex-wrap: wrap; }
 }

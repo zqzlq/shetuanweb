@@ -41,7 +41,7 @@
           <label class="field full"><span>简述</span><input :value="item.award.shortDesc" @input="updateAwardItem(item._origIdx, 'shortDesc', $event.target.value)" /></label>
           <label class="field full"><span>描述</span><textarea :value="item.award.description" @input="updateAwardItem(item._origIdx, 'description', $event.target.value)" rows="2"></textarea></label>
           <label class="field full"><span>详细介绍（Markdown）</span><MarkdownEditorField :modelValue="item.award.longDescription || ''" @update:modelValue="updateAwardItem(item._origIdx, 'longDescription', $event)" /></label>
-          <label class="field"><span>参赛成员（逗号分隔）</span><input :value="item.award.participants?.join(', ')" @input="updateAwardItem(item._origIdx, 'participants', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
+          <label class="field"><span>参赛成员（逗号分隔）</span><input :value="item.award.participants?.join(', ')" @change="updateAwardItem(item._origIdx, 'participants', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
           <label class="field"><span>关联项目 Slug</span><input :value="item.award.projectSlug" @input="updateAwardItem(item._origIdx, 'projectSlug', $event.target.value)" /></label>
           <label class="field full"><span>主图</span><ImageUploadField :modelValue="item.award.image || ''" @update:modelValue="updateAwardItem(item._origIdx, 'image', $event)" /></label>
           <label class="field full"><span>奖项图片</span><MultiImageUploadField :modelValue="item.award.screenshots || []" @update:modelValue="updateAwardItem(item._origIdx, 'screenshots', $event)" /></label>

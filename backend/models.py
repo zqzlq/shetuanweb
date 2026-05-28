@@ -60,6 +60,7 @@ class Application(db.Model):
     motivation = db.Column(db.Text, nullable=False)
     ip_address = db.Column(db.String(64), nullable=True)
     status = db.Column(db.String(20), nullable=False, default='pending')
+    session = db.Column(db.String(50), nullable=True)
     admin_note = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     processed_at = db.Column(db.DateTime, nullable=True)
@@ -85,6 +86,7 @@ class Application(db.Model):
             'motivation': self.motivation,
             'ip_address': self.ip_address,
             'status': self.status,
+            'session': self.session,
             'admin_note': self.admin_note,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'processed_at': self.processed_at.isoformat() if self.processed_at else None,
@@ -114,5 +116,75 @@ class AdminUser(db.Model):
         return {
             'id': self.id,
             'username': self.username,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class MemberUser(db.Model):
+    __tablename__ = 'member_users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    student_id = db.Column(db.String(50), nullable=True)
+    phone = db.Column(db.String(30), nullable=True)
+    avatar = db.Column(db.String(500), nullable=True)
+    group_name = db.Column(db.String(100), nullable=True)
+    bio = db.Column(db.Text, nullable=True)
+    social_links = db.Column(db.JSON, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'name': self.name,
+            'student_id': self.student_id,
+            'phone': self.phone,
+            'avatar': self.avatar,
+            'group': self.group_name or '',
+            'bio': self.bio,
+            'social_links': self.social_links,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class UserSubmission(db.Model):
+    __tablename__ = 'user_submissions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('member_users.id'), nullable=False)
+    type = db.Column(db.String(20), nullable=False)  # 'award' or 'project'
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    image = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    data = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship('MemberUser', backref='submissions')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'type': self.type,
+            'title': self.title,
+            'description': self.description,
+            'image': self.image,
+            'status': self.status,
+            'data': self.data,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }

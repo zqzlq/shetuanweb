@@ -45,6 +45,7 @@
             <option value="true">开启</option>
           </select>
         </label>
+        <label class="field full"><span>群聊邀请链接（通过后邮件附带）</span><input :value="modelValue?.groupChatInviteLink || ''" @input="update('groupChatInviteLink', $event.target.value)" placeholder="https://..." /></label>
       </div>
     </div>
 

@@ -68,7 +68,8 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useSiteConfigStore } from '@/stores/siteConfig'
 import { useInkReveal } from '@/composables/useInkReveal'
 
-const { config } = useSiteConfigStore()
+const store = useSiteConfigStore()
+const { config } = store
 const sectionRef = ref(null)
 const trackRef = ref(null)
 const activeCat = ref('精选总览')
@@ -77,13 +78,10 @@ const canScrollRight = ref(true)
 
 useInkReveal(sectionRef)
 
+// 直接从项目页面读取项目列表，与 /projects 页面保持一致
 const allProjects = computed(() => {
-  const seen = new Set()
-  return config.products.slides.flatMap((s) => s.projects).filter((p) => {
-    if (seen.has(p.slug)) return false
-    seen.add(p.slug)
-    return true
-  })
+  const page = store.getPage('projects')
+  return page?.content?.projects || []
 })
 
 const filteredProjects = computed(() => {

@@ -9,7 +9,7 @@
 
       <div class="filter-bar reveal">
         <div class="filter-tabs">
-          <button v-for="f in page.content.filters" :key="f" class="filter-tab" :class="{ active: activeFilter === f }" @click="activeFilter = f">{{ f }}</button>
+          <button v-for="f in filterOptions" :key="f" class="filter-tab" :class="{ active: activeFilter === f }" @click="activeFilter = f">{{ f }}</button>
         </div>
         <div class="search-box">
           <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -102,8 +102,14 @@ const showCount = ref(PAGE_SIZE)
 
 useScrollReveal()
 
+// 从首页配置的分类标签动态生成过滤选项
+const filterOptions = computed(() => {
+  const cats = store.config?.products?.categories || []
+  return ['全部', '精选', ...cats.filter(c => c && c !== '精选总览')]
+})
+
 const filtered = computed(() => {
-  let list = page.content.projects
+  let list = page.content.projects || []
   if (activeFilter.value === '精选') {
     list = list.filter((p) => p.featured)
   } else if (activeFilter.value !== '全部') {

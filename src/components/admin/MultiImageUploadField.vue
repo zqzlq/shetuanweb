@@ -3,7 +3,7 @@
     <div v-if="modelValue?.length" class="image-grid">
       <div v-for="(url, i) in modelValue" :key="i" class="image-thumb">
         <img :src="url" alt="图片" />
-        <button class="remove-btn" @click.stop="removeAt(i)" title="删除图片">&times;</button>
+        <button class="remove-btn" @click.stop="removeAt(i)" title="删除图片">&times; 删除</button>
       </div>
     </div>
     <div class="add-row">
@@ -84,22 +84,20 @@ async function handleUpload(e) {
   position: absolute;
   top: 4px;
   right: 4px;
-  background: rgba(0,0,0,0.6);
+  background: rgba(224,80,80,0.85);
   color: white;
   border: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  justify-content: center;
-  line-height: 1;
-  padding: 0;
-  transition: background 0.15s;
+  gap: 2px;
+  white-space: nowrap;
+  z-index: 1;
 }
-.remove-btn:hover { background: rgba(224,80,80,0.9); }
+.remove-btn:hover { background: #e05050; }
 .add-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .upload-btn { cursor: pointer; }
 .divider { font-size: 12px; color: var(--text-muted); }

@@ -3,6 +3,7 @@ import smtplib
 import time
 from datetime import datetime
 from email.message import EmailMessage
+from email.mime.image import MIMEImage
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
@@ -124,11 +125,13 @@ def get_status_label(application):
     if status == 'pending':
         return '待处理'
     if status == 'reviewing':
-        return '处理中'
+        return '审核中'
     if status == 'approved':
         return '已通过'
     if status == 'rejected':
         return '已拒绝'
+    if status == 'archived':
+        return '已归档'
     return status
 
 
@@ -174,7 +177,32 @@ def _escape_html(value):
     )
 
 
-def send_email(subject, to_email, text_content, html_content=None):
+def _download_image(url):
+    """下载图片返回 (bytes, mime_type)，失败返回 None"""
+    if not url:
+        return None
+    try:
+        req = urllib_request.Request(url, headers={'User-Agent': 'XingyuCMS/2.0'})
+        with urllib_request.urlopen(req, timeout=10) as resp:
+            data = resp.read()
+            mime = resp.headers.get('Content-Type', 'image/png')
+            return data, mime
+    except Exception:
+        return None
+
+
+def get_site_logo_url():
+    """从系统配置读取站点 logo URL"""
+    try:
+        system_cfg = SiteConfig.query.filter_by(config_key='system').first()
+        if system_cfg and isinstance(system_cfg.config_value, dict):
+            return (system_cfg.config_value.get('siteIcon') or '').strip()
+    except Exception:
+        pass
+    return ''
+
+
+def send_email(subject, to_email, text_content, html_content=None, inline_images=None):
     if not current_app.config.get('MAIL_ENABLED'):
         return False, '邮件发送未启用'
 
@@ -191,8 +219,20 @@ def send_email(subject, to_email, text_content, html_content=None):
     message['From'] = f'{current_app.config.get("MAIL_FROM_NAME", "星雨作坊")} <{from_email}>'
     message['To'] = to_email
     message.set_content(text_content)
+
+    # 构建 HTML 并添加内嵌图片作为相关附件
     if html_content:
+        # 先设置 HTML 内容
         message.add_alternative(html_content, subtype='html')
+
+    # 添加内嵌图片（inline attachments with Content-ID）
+    if inline_images:
+        for cid, (img_bytes, mime_type) in inline_images.items():
+            maintype, subtype = mime_type.split('/', 1) if '/' in mime_type else ('image', 'png')
+            img = MIMEImage(img_bytes, _subtype=subtype)
+            img.add_header('Content-ID', f'<{cid}>')
+            img.add_header('Content-Disposition', 'inline', filename=f'{cid}.{subtype}')
+            message.attach(img)
 
     smtp_port = current_app.config.get('SMTP_PORT') or 587
     smtp_use_ssl = current_app.config.get('SMTP_USE_SSL')
@@ -216,21 +256,43 @@ def send_email(subject, to_email, text_content, html_content=None):
         return False, str(error)
 
 
-def build_result_email(application):
+def build_result_email(application, group_link_override=None, qr_code_url=None):
     group_name = application.group_name or '社团'
     name = application.name
 
+    # 读取站点 logo
+    logo_url = get_site_logo_url()
+
+    # 优先使用传入的链接，否则读取系统配置
+    group_link = group_link_override or ''
+    if not group_link:
+        try:
+            system_cfg = SiteConfig.query.filter_by(config_key='system').first()
+            if system_cfg and isinstance(system_cfg.config_value, dict):
+                group_link = (system_cfg.config_value.get('groupChatInviteLink') or '').strip()
+        except Exception:
+            pass
+
+    # 邮件底部 logo
+    logo_html = '<p><img src="cid:logo" alt="星雨作坊" style="max-width:120px;margin-top:20px;" /></p>' if logo_url else ''
+
     if application.status == 'approved':
+        qr_html = f'<p><img src="cid:qrcode" alt="考核群二维码" style="max-width:280px;border-radius:8px;" /></p>' if qr_code_url else ''
+        group_link_html = f'<p>请点击以下链接或扫描二维码加入考核群：<br><a href="{_escape_html(group_link)}">{_escape_html(group_link)}</a></p>{qr_html}' if group_link else '<p>请留意后续通知加入考核群。</p>'
+        group_link_text = f'\n请通过以下链接加入考核群：{group_link}' if group_link else '\n请留意后续通知加入考核群。'
         text_content = f'''{name} 同学，你好：
 
 感谢你报名 {group_name}。
-你的申请已通过，欢迎进入下一阶段。请留意后续通知。
+你的报名申请已通过，请加入考核群。{group_link_text}
 
 星雨作坊'''
-        html_content = f'''<p>{_escape_html(name)} 同学，你好：</p>
+        html_content = f'''<div style="max-width:600px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<p>{_escape_html(name)} 同学，你好：</p>
 <p>感谢你报名 <strong>{_escape_html(group_name)}</strong>。</p>
-<p>你的申请已通过，欢迎进入下一阶段。请留意后续通知。</p>
-<p>星雨作坊</p>'''
+<p>你的报名申请已通过，请加入考核群。</p>
+{group_link_html}
+{logo_html}
+</div>'''
         return '星雨作坊报名结果通知', text_content, html_content, 'result_approved'
 
     text_content = f'''{name} 同学，你好：
@@ -240,16 +302,41 @@ def build_result_email(application):
 欢迎后续继续关注星雨作坊的活动与招新信息。
 
 星雨作坊'''
-    html_content = f'''<p>{_escape_html(name)} 同学，你好：</p>
+    html_content = f'''<div style="max-width:600px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<p>{_escape_html(name)} 同学，你好：</p>
 <p>感谢你报名 <strong>{_escape_html(group_name)}</strong>。</p>
 <p>很遗憾，本次未能通过筛选，但仍感谢你的关注与投入。</p>
 <p>欢迎后续继续关注星雨作坊的活动与招新信息。</p>
-<p>星雨作坊</p>'''
+{logo_html}
+</div>'''
     return '星雨作坊报名结果通知', text_content, html_content, 'result_rejected'
 
 
-def send_status_email(application, mail_kind):
-    subject, content, html_content, email_type = build_result_email(application)
+def send_status_email(application, mail_kind, group_link=None, qr_code_url=None):
+    subject, content, html_content, email_type = build_result_email(application, group_link, qr_code_url)
+
+    # 准备内嵌图片
+    inline_images = {}
+    logo_url = get_site_logo_url()
+    if logo_url:
+        img_data = _download_image(logo_url)
+        if img_data:
+            inline_images['logo'] = img_data
+    if qr_code_url:
+        img_data = _download_image(qr_code_url)
+        if img_data:
+            inline_images['qrcode'] = img_data
+
+    sent, error = send_email(subject, application.email, content, html_content, inline_images)
+    application.last_email_type = email_type
+    application.last_email_sent = sent
+    application.last_email_error = error or None
+    application.last_email_sent_at = datetime.utcnow() if sent else None
+    return sent, error
+
+
+def send_status_email(application, mail_kind, group_link=None, qr_code_url=None):
+    subject, content, html_content, email_type = build_result_email(application, group_link, qr_code_url)
     sent, error = send_email(subject, application.email, content, html_content)
     application.last_email_type = email_type
     application.last_email_sent = sent
