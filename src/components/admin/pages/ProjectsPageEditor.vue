@@ -28,7 +28,7 @@
           <label class="field"><span>GitHub</span><input :value="p.githubUrl" @input="updateProject(i, 'githubUrl', $event.target.value)" /></label>
           <label class="field"><span>状态</span><input :value="p.status" @input="updateProject(i, 'status', $event.target.value)" /></label>
           <label class="field full"><span>描述</span><textarea :value="p.description" @input="updateProject(i, 'description', $event.target.value)" rows="2"></textarea></label>
-          <label class="field full"><span>详细描述</span><textarea :value="p.longDescription" @input="updateProject(i, 'longDescription', $event.target.value)" rows="3"></textarea></label>
+          <label class="field full"><span>详细描述（Markdown）</span><MarkdownEditorField :modelValue="p.longDescription || ''" @update:modelValue="updateProject(i, 'longDescription', $event)" /></label>
           <label class="field full"><span>封面图片</span><ImageUploadField :modelValue="p.coverImage || ''" @update:modelValue="updateProject(i, 'coverImage', $event)" /></label>
           <label class="field full"><span>项目截图</span><MultiImageUploadField :modelValue="p.screenshots || []" @update:modelValue="updateProject(i, 'screenshots', $event)" /></label>
           <label class="field"><span>技术栈（逗号分隔）</span><input :value="p.techStack?.join(', ')" @input="updateProject(i, 'techStack', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
@@ -60,7 +60,7 @@
           <label class="field full"><span>标题</span><input :value="a.title" @input="updateAwardItem(i, 'title', $event.target.value)" /></label>
           <label class="field full"><span>简述</span><input :value="a.shortDesc" @input="updateAwardItem(i, 'shortDesc', $event.target.value)" /></label>
           <label class="field full"><span>描述</span><textarea :value="a.description" @input="updateAwardItem(i, 'description', $event.target.value)" rows="2"></textarea></label>
-          <label class="field full"><span>详细介绍（Markdown）</span><textarea :value="a.longDescription" @input="updateAwardItem(i, 'longDescription', $event.target.value)" rows="4"></textarea></label>
+          <label class="field full"><span>详细介绍（Markdown）</span><MarkdownEditorField :modelValue="a.longDescription || ''" @update:modelValue="updateAwardItem(i, 'longDescription', $event)" /></label>
           <label class="field"><span>参赛成员（逗号分隔）</span><input :value="a.participants?.join(', ')" @input="updateAwardItem(i, 'participants', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
           <label class="field"><span>关联项目 Slug</span><input :value="a.projectSlug" @input="updateAwardItem(i, 'projectSlug', $event.target.value)" /></label>
           <label class="field full"><span>主图</span><ImageUploadField :modelValue="a.image || ''" @update:modelValue="updateAwardItem(i, 'image', $event)" /></label>
@@ -75,6 +75,7 @@
 import { nextTick, ref } from 'vue'
 import ImageUploadField from '../ImageUploadField.vue'
 import MultiImageUploadField from '../MultiImageUploadField.vue'
+import MarkdownEditorField from '../MarkdownEditorField.vue'
 const props = defineProps({ content: Object })
 const emit = defineEmits(['update'])
 const c = () => props.content
