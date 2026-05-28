@@ -21,7 +21,7 @@ DEFAULT_SITE_CONFIG = {
     },
     'footer': {
         'brand': '星雨作坊 Xingyu Studio',
-        'logo': '',
+        'logo': 'https://shetuanweb.oss-cn-wulanchabu.aliyuncs.com/images/5ab0547bffef4a0986baac8e245c4401.png',
         'slogan': '以协作连接灵感，以开源延续成长。'
     },
     'hero': {
@@ -241,18 +241,22 @@ DEFAULT_SITE_CONFIG = {
     },
     'system': {
         'feishuAppChatId': '',
-        'feishuMode': 'app',
-        'feishuWebhookUrl': 'https://open.feishu.cn/open-apis/bot/v2/hook/211ef8de-30ae-4a9f-8633-3f08d303e76f',
-        'siteIcon': 'https://shetuanweb.oss-cn-wulanchabu.aliyuncs.com/images/5ab0547bffef4a0986baac8e245c4401.png',
+        'feishuAppId': '',
+        'feishuAppSecret': '',
+        'feishuAppVerificationToken': '',
+        'feishuAppEncryptKey': '',
+        'feishuMode': 'webhook',
+        'feishuWebhookUrl': '',
+        'siteIcon': '',
         'mailEnabled': False,
         'smtpHost': '',
-        'smtpPort': 587,
+        'smtpPort': 465,
         'smtpUsername': '',
         'smtpPassword': '',
         'mailFromEmail': '',
         'mailFromName': '星雨作坊',
-        'smtpUseSsl': False,
-        'smtpUseTls': True,
+        'smtpUseSsl': True,
+        'smtpUseTls': False,
     }
 }
 

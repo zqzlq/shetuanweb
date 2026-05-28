@@ -55,10 +55,14 @@
             <button class="btn btn-outline btn-xs" @click="addProject(si)">+ 手动添加</button>
           </div>
         </div>
-        <div v-for="(proj, pi) in slide.projects" :key="pi" class="list-item">
+        <div v-for="(proj, pi) in slide.projects" :key="pi" class="list-item" :ref="el => { if (!projectRefs.value[si]) projectRefs.value[si] = []; if (el) projectRefs.value[si][pi] = el }">
           <div class="list-item-header">
             <span class="item-index">{{ proj.name || '#' + (pi + 1) }}</span>
-            <button class="btn-icon" @click="removeProject(si, pi)">&times;</button>
+            <span class="sort-btns">
+              <button class="btn-icon" :disabled="pi === 0" @click="moveProject(si, pi, -1)" title="上移">&#8593;</button>
+              <button class="btn-icon" :disabled="pi === slide.projects.length - 1" @click="moveProject(si, pi, 1)" title="下移">&#8595;</button>
+              <button class="btn-icon" @click="removeProject(si, pi)">&times;</button>
+            </span>
           </div>
           <div class="field-grid">
             <label class="field">
@@ -109,12 +113,15 @@
 </template>
 
 <script setup>
+import { nextTick, ref } from 'vue'
 import ImageUploadField from '../ImageUploadField.vue'
 const props = defineProps({
   modelValue: Object,
   allProjects: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['update:modelValue'])
+
+const projectRefs = ref({})
 
 function emitVal(val) { emit('update:modelValue', val) }
 function update(key, value) { emitVal({ ...props.modelValue, [key]: value }) }
@@ -185,12 +192,14 @@ function addProjectFromPool(si, event) {
   }
   emitVal({ ...props.modelValue, slides })
   event.target.value = ''
+  nextTick(() => { const refs = projectRefs.value[si]; refs?.[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
 }
 
 function addProject(si) {
   const slides = [...props.modelValue.slides]
   slides[si] = { ...slides[si], projects: [...slides[si].projects, { name: '', slug: '', category: '', description: '', link: '', coverClass: 'aurora', techStack: [], featured: false }] }
   emitVal({ ...props.modelValue, slides })
+  nextTick(() => { const refs = projectRefs.value[si]; refs?.[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
 }
 
 function removeProject(si, pi) {
@@ -199,11 +208,29 @@ function removeProject(si, pi) {
   emitVal({ ...props.modelValue, slides })
 }
 
+function moveProject(si, pi, dir) {
+  const slides = props.modelValue.slides.map(s => ({ ...s, projects: [...s.projects] }))
+  const pj = pi + dir
+  if (pj < 0 || pj >= slides[si].projects.length) return
+  ;[slides[si].projects[pi], slides[si].projects[pj]] = [slides[si].projects[pj], slides[si].projects[pi]]
+  emitVal({ ...props.modelValue, slides })
+}
+
 function updateProject(si, pi, key, value) {
-  const slides = [...props.modelValue.slides]
-  const projects = [...slides[si].projects]
-  projects[pi] = { ...projects[pi], [key]: value }
-  slides[si] = { ...slides[si], projects }
+  let slides = props.modelValue.slides.map(s => ({ ...s, projects: [...s.projects] }))
+  slides[si].projects[pi] = { ...slides[si].projects[pi], [key]: value }
+
+  // 精选状态跨分类同步：同一 slug 的项目在所有分类下保持一致
+  if (key === 'featured') {
+    const slug = slides[si].projects[pi].slug
+    if (slug) {
+      slides = slides.map(s => ({
+        ...s,
+        projects: s.projects.map(p => p.slug === slug ? { ...p, featured: value } : p)
+      }))
+    }
+  }
+
   emitVal({ ...props.modelValue, slides })
 }
 </script>
@@ -231,6 +258,8 @@ function updateProject(si, pi, key, value) {
 .w-200 { flex: 1; }
 .btn-icon { width: 28px; height: 28px; border: 1px solid var(--glass-border); border-radius: 6px; background: white; color: var(--text-muted); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .btn-icon:hover { color: #e05050; border-color: #e05050; }
+.btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
+.sort-btns { display: flex; gap: 4px; }
 .btn-xs { padding: 4px 12px; font-size: 12px; }
 .cat-lock-hint { font-size: 11px; color: var(--text-muted); font-style: italic; }
 .checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }

@@ -11,8 +11,15 @@
 
     <div class="editor-card">
       <div class="card-header"><h3 class="editor-title">项目列表</h3><button class="btn btn-outline btn-xs" @click="addProject">+ 添加</button></div>
-      <div v-for="(p, i) in content.projects || []" :key="i" class="list-item">
-        <div class="list-item-header"><span class="item-index">{{ p.name || '#' + (i+1) }}</span><button class="btn-icon" @click="removeProject(i)">&times;</button></div>
+      <div v-for="(p, i) in content.projects || []" :key="i" class="list-item" :ref="el => { if (el) projectRefs.value[i] = el }">
+        <div class="list-item-header">
+          <span class="item-index">{{ p.name || '#' + (i+1) }}</span>
+          <span class="sort-btns">
+            <button class="btn-icon" :disabled="i === 0" @click="moveProject(i, -1)" title="上移">&#8593;</button>
+            <button class="btn-icon" :disabled="i === (content.projects?.length || 0) - 1" @click="moveProject(i, 1)" title="下移">&#8595;</button>
+            <button class="btn-icon" @click="removeProject(i)">&times;</button>
+          </span>
+        </div>
         <div class="field-grid">
           <label class="field"><span>名称</span><input :value="p.name" @input="updateProject(i, 'name', $event.target.value)" /></label>
           <label class="field"><span>Slug</span><input :value="p.slug" @input="updateProject(i, 'slug', $event.target.value)" /></label>
@@ -36,13 +43,26 @@
         <label class="field full"><span>标题</span><input :value="content.awards?.title" @input="updateAwards('title', $event.target.value)" /></label>
         <label class="field full"><span>描述</span><input :value="content.awards?.description" @input="updateAwards('description', $event.target.value)" /></label>
       </div>
-      <div v-for="(a, i) in content.awards?.items || []" :key="i" class="list-item">
-        <div class="list-item-header"><span class="item-index">{{ a.title || '#' + (i+1) }}</span><button class="btn-icon" @click="removeAward(i)">&times;</button></div>
+      <div v-for="(a, i) in content.awards?.items || []" :key="i" class="list-item" :ref="el => { if (el) awardRefs.value[i] = el }">
+        <div class="list-item-header">
+          <span class="item-index">{{ a.title || '#' + (i+1) }}</span>
+          <span class="sort-btns">
+            <button class="btn-icon" :disabled="i === 0" @click="moveAward(i, -1)" title="上移">&#8593;</button>
+            <button class="btn-icon" :disabled="i === (content.awards?.items?.length || 0) - 1" @click="moveAward(i, 1)" title="下移">&#8595;</button>
+            <button class="btn-icon" @click="removeAward(i)">&times;</button>
+          </span>
+        </div>
         <div class="field-grid">
           <label class="field"><span>Slug</span><input :value="a.slug" @input="updateAwardItem(i, 'slug', $event.target.value)" /></label>
           <label class="field"><span>级别</span><input :value="a.level" @input="updateAwardItem(i, 'level', $event.target.value)" /></label>
+          <label class="field"><span>日期</span><input :value="a.date" @input="updateAwardItem(i, 'date', $event.target.value)" placeholder="2026-05" /></label>
+          <label class="field"><span>分类</span><input :value="a.category" @input="updateAwardItem(i, 'category', $event.target.value)" placeholder="比赛/设计" /></label>
           <label class="field full"><span>标题</span><input :value="a.title" @input="updateAwardItem(i, 'title', $event.target.value)" /></label>
           <label class="field full"><span>简述</span><input :value="a.shortDesc" @input="updateAwardItem(i, 'shortDesc', $event.target.value)" /></label>
+          <label class="field full"><span>描述</span><textarea :value="a.description" @input="updateAwardItem(i, 'description', $event.target.value)" rows="2"></textarea></label>
+          <label class="field full"><span>详细介绍（Markdown）</span><textarea :value="a.longDescription" @input="updateAwardItem(i, 'longDescription', $event.target.value)" rows="4"></textarea></label>
+          <label class="field"><span>参赛成员（逗号分隔）</span><input :value="a.participants?.join(', ')" @input="updateAwardItem(i, 'participants', $event.target.value.split(',').map(s=>s.trim()).filter(Boolean))" /></label>
+          <label class="field"><span>关联项目 Slug</span><input :value="a.projectSlug" @input="updateAwardItem(i, 'projectSlug', $event.target.value)" /></label>
           <label class="field full"><span>主图</span><ImageUploadField :modelValue="a.image || ''" @update:modelValue="updateAwardItem(i, 'image', $event)" /></label>
           <label class="field full"><span>奖项图片</span><MultiImageUploadField :modelValue="a.screenshots || []" @update:modelValue="updateAwardItem(i, 'screenshots', $event)" /></label>
         </div>
@@ -52,12 +72,16 @@
 </template>
 
 <script setup>
+import { nextTick, ref } from 'vue'
 import ImageUploadField from '../ImageUploadField.vue'
 import MultiImageUploadField from '../MultiImageUploadField.vue'
 const props = defineProps({ content: Object })
 const emit = defineEmits(['update'])
 const c = () => props.content
 const up = (val) => emit('update', val)
+
+const projectRefs = ref([])
+const awardRefs = ref([])
 
 function updateHero(k, v) { up({ ...c(), hero: { ...c().hero, [k]: v } }) }
 function updateAwards(k, v) { up({ ...c(), awards: { ...c().awards, [k]: v } }) }
@@ -67,16 +91,32 @@ function updateProject(i, k, v) {
   projects[i] = { ...projects[i], [k]: v }
   up({ ...c(), projects })
 }
-function addProject() { up({ ...c(), projects: [...(c().projects || []), { name: '', slug: '', category: '', description: '', longDescription: '', coverClass: 'aurora', coverImage: '', screenshots: [], githubUrl: '', techStack: [], status: 'wip', featured: false, link: '' }] }) }
+function addProject() {
+  up({ ...c(), projects: [...(c().projects || []), { name: '', slug: '', category: '', description: '', longDescription: '', coverClass: 'aurora', coverImage: '', screenshots: [], githubUrl: '', techStack: [], status: 'wip', featured: false, link: '' }] })
+  nextTick(() => { const refs = projectRefs.value; refs[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
+}
 function removeProject(i) { up({ ...c(), projects: (c().projects || []).filter((_, idx) => idx !== i) }) }
+function moveProject(i, dir) {
+  const projects = [...(c().projects || [])]; const j = i + dir
+  if (j < 0 || j >= projects.length) return;[projects[i], projects[j]] = [projects[j], projects[i]]
+  up({ ...c(), projects })
+}
 
 function updateAwardItem(i, k, v) {
   const items = [...(c().awards?.items || [])]
   items[i] = { ...items[i], [k]: v }
   up({ ...c(), awards: { ...c().awards, items } })
 }
-function addAward() { up({ ...c(), awards: { ...c().awards, items: [...(c().awards?.items || []), { slug: '', title: '', shortDesc: '', image: '', screenshots: [], level: '', date: '', category: '', participants: [] }] } }) }
+function addAward() {
+  up({ ...c(), awards: { ...c().awards, items: [...(c().awards?.items || []), { slug: '', title: '', shortDesc: '', description: '', longDescription: '', image: '', screenshots: [], level: '', date: '', category: '', participants: [], projectSlug: '' }] } })
+  nextTick(() => { const refs = awardRefs.value; refs[refs.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' }) })
+}
 function removeAward(i) { up({ ...c(), awards: { ...c().awards, items: (c().awards?.items || []).filter((_, idx) => idx !== i) } }) }
+function moveAward(i, dir) {
+  const items = [...(c().awards?.items || [])]; const j = i + dir
+  if (j < 0 || j >= items.length) return;[items[i], items[j]] = [items[j], items[i]]
+  up({ ...c(), awards: { ...c().awards, items } })
+}
 </script>
 
 <style scoped>
@@ -95,6 +135,8 @@ function removeAward(i) { up({ ...c(), awards: { ...c().awards, items: (c().awar
 .item-index { font-size: 11px; font-weight: 600; color: var(--text-muted); }
 .btn-icon { width: 24px; height: 24px; border: 1px solid var(--glass-border); border-radius: 4px; background: white; color: var(--text-muted); font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .btn-icon:hover { color: #e05050; border-color: #e05050; }
+.btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
+.sort-btns { display: flex; gap: 4px; }
 .btn-xs { padding: 3px 10px; font-size: 11px; }
 
 @media (max-width: 768px) {

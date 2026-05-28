@@ -19,7 +19,7 @@ export const defaultSiteConfig = {
   },
   footer: {
     brand: '星雨作坊 Xingyu Studio',
-    logo: '',
+    logo: 'https://shetuanweb.oss-cn-wulanchabu.aliyuncs.com/images/5ab0547bffef4a0986baac8e245c4401.png',
     slogan: '以协作连接灵感，以开源延续成长。'
   },
   hero: {

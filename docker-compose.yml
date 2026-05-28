@@ -8,6 +8,28 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-xingyu-jwt-secret-2026}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/xingyu_cms.db}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
+      # 阿里云 OSS
+      - ALIYUN_ACCESS_KEY_ID=${ALIYUN_ACCESS_KEY_ID:-}
+      - ALIYUN_ACCESS_KEY_SECRET=${ALIYUN_ACCESS_KEY_SECRET:-}
+      - ALIYUN_OSS_ENDPOINT=${ALIYUN_OSS_ENDPOINT:-}
+      - ALIYUN_OSS_BUCKET_NAME=${ALIYUN_OSS_BUCKET_NAME:-}
+      - ALIYUN_OSS_CDN_URL=${ALIYUN_OSS_CDN_URL:-}
+      # 飞书
+      - FEISHU_WEBHOOK_URL=${FEISHU_WEBHOOK_URL:-}
+      - FEISHU_APP_ENABLED=${FEISHU_APP_ENABLED:-false}
+      - FEISHU_APP_ID=${FEISHU_APP_ID:-}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}
+      - FEISHU_APP_CHAT_ID=${FEISHU_APP_CHAT_ID:-}
+      - FEISHU_APP_VERIFICATION_TOKEN=${FEISHU_APP_VERIFICATION_TOKEN:-}
+      - FEISHU_APP_ENCRYPT_KEY=${FEISHU_APP_ENCRYPT_KEY:-}
+      # 邮件
+      - MAIL_ENABLED=${MAIL_ENABLED:-false}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - MAIL_FROM_EMAIL=${MAIL_FROM_EMAIL:-}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME:-星雨作坊}
     volumes:
       - db-data:/app/data
       - upload-data:/app/uploads

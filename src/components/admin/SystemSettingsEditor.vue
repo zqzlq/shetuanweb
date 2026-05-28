@@ -3,7 +3,18 @@
     <div class="editor-card">
       <h3 class="editor-title">飞书通知</h3>
       <div class="field-grid">
+        <label class="field"><span>飞书模式</span>
+          <select :value="modelValue?.feishuMode || 'app'" @change="update('feishuMode', $event.target.value)">
+            <option value="app">应用模式（交互卡片）</option>
+            <option value="webhook">Webhook 模式</option>
+          </select>
+        </label>
         <label class="field full"><span>Webhook URL</span><input :value="modelValue?.feishuWebhookUrl || ''" @input="update('feishuWebhookUrl', $event.target.value)" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." /></label>
+        <label class="field"><span>App ID</span><input :value="modelValue?.feishuAppId || ''" @input="update('feishuAppId', $event.target.value)" placeholder="cli_xxxxx" /></label>
+        <label class="field"><span>App Secret</span><input type="password" :value="modelValue?.feishuAppSecret || ''" @input="update('feishuAppSecret', $event.target.value)" /></label>
+        <label class="field full"><span>Chat ID</span><input :value="modelValue?.feishuAppChatId || ''" @input="update('feishuAppChatId', $event.target.value)" placeholder="oc_xxxxx" /></label>
+        <label class="field"><span>Verification Token</span><input :value="modelValue?.feishuAppVerificationToken || ''" @input="update('feishuAppVerificationToken', $event.target.value)" /></label>
+        <label class="field"><span>Encrypt Key</span><input type="password" :value="modelValue?.feishuAppEncryptKey || ''" @input="update('feishuAppEncryptKey', $event.target.value)" /></label>
       </div>
     </div>
 

@@ -95,17 +95,31 @@ def _migrate_columns(app):
 def _load_mail_config(app):
     try:
         system_cfg = SiteConfig.query.filter_by(config_key='system').first()
-        if system_cfg and isinstance(system_cfg.config_value, dict):
-            cfg = system_cfg.config_value
-            app.config['MAIL_ENABLED'] = cfg.get('mailEnabled', False)
-            app.config['SMTP_HOST'] = cfg.get('smtpHost', '')
-            app.config['SMTP_PORT'] = cfg.get('smtpPort', 587)
-            app.config['SMTP_USERNAME'] = cfg.get('smtpUsername', '')
-            app.config['SMTP_PASSWORD'] = cfg.get('smtpPassword', '')
-            app.config['MAIL_FROM_EMAIL'] = cfg.get('mailFromEmail', '')
-            app.config['MAIL_FROM_NAME'] = cfg.get('mailFromName', '星雨作坊')
-            app.config['SMTP_USE_SSL'] = cfg.get('smtpUseSsl', False)
-            app.config['SMTP_USE_TLS'] = cfg.get('smtpUseTls', True)
+        cfg = system_cfg.config_value if system_cfg and isinstance(system_cfg.config_value, dict) else {}
+
+        # 环境变量覆盖（敏感信息优先从环境变量读取）
+        import os
+        def env_or(key, fallback):
+            return os.environ.get(key) or fallback
+
+        # 邮件配置
+        app.config['MAIL_ENABLED'] = cfg.get('mailEnabled', False) or os.environ.get('MAIL_ENABLED', '').lower() in ('1', 'true', 'yes')
+        app.config['SMTP_HOST'] = env_or('SMTP_HOST', cfg.get('smtpHost', ''))
+        app.config['SMTP_PORT'] = int(env_or('SMTP_PORT', cfg.get('smtpPort', 465)))
+        app.config['SMTP_USERNAME'] = env_or('SMTP_USERNAME', cfg.get('smtpUsername', ''))
+        app.config['SMTP_PASSWORD'] = env_or('SMTP_PASSWORD', cfg.get('smtpPassword', ''))
+        app.config['MAIL_FROM_EMAIL'] = env_or('MAIL_FROM_EMAIL', cfg.get('mailFromEmail', ''))
+        app.config['MAIL_FROM_NAME'] = cfg.get('mailFromName', '星雨作坊')
+        app.config['SMTP_USE_SSL'] = cfg.get('smtpUseSsl', True)
+        app.config['SMTP_USE_TLS'] = cfg.get('smtpUseTls', False)
+        # 飞书配置
+        app.config['FEISHU_APP_ENABLED'] = cfg.get('feishuMode') == 'app' or os.environ.get('FEISHU_APP_ENABLED', '').lower() in ('1', 'true', 'yes')
+        app.config['FEISHU_APP_ID'] = env_or('FEISHU_APP_ID', cfg.get('feishuAppId', ''))
+        app.config['FEISHU_APP_SECRET'] = env_or('FEISHU_APP_SECRET', cfg.get('feishuAppSecret', ''))
+        app.config['FEISHU_APP_CHAT_ID'] = env_or('FEISHU_APP_CHAT_ID', cfg.get('feishuAppChatId', ''))
+        app.config['FEISHU_APP_VERIFICATION_TOKEN'] = env_or('FEISHU_APP_VERIFICATION_TOKEN', cfg.get('feishuAppVerificationToken', ''))
+        app.config['FEISHU_APP_ENCRYPT_KEY'] = env_or('FEISHU_APP_ENCRYPT_KEY', cfg.get('feishuAppEncryptKey', ''))
+        app.config['FEISHU_WEBHOOK_URL'] = env_or('FEISHU_WEBHOOK_URL', cfg.get('feishuWebhookUrl', ''))
     except Exception:
         pass
 
