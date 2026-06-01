@@ -78,6 +78,9 @@
 
           <!-- 提交审核 -->
           <SubmissionManager v-if="activeSection === 'submissions'" />
+
+          <!-- 留言管理 -->
+          <ContactManager v-if="activeSection === 'contactMessages'" />
         </div>
       </div>
     </div>
@@ -99,6 +102,7 @@ import PagesEditor from '@/components/admin/PagesEditor.vue'
 import UserManager from '@/components/admin/UserManager.vue'
 import SubmissionManager from '@/components/admin/SubmissionManager.vue'
 import ApplicationsManager from '@/components/admin/ApplicationsManager.vue'
+import ContactManager from '@/components/admin/ContactManager.vue'
 import SystemSettingsEditor from '@/components/admin/SystemSettingsEditor.vue'
 
 const isLoggedIn = ref(false)
@@ -122,6 +126,7 @@ const sectionItems = [
   { key: 'members', label: '人员介绍' },
   { key: 'products', label: '产品展示' },
   { key: 'awards', label: '荣誉展示' },
+  { key: 'announcements', label: '公告动态' },
   { key: 'openSource', label: '开源精神' },
 ]
 

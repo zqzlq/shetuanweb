@@ -237,6 +237,7 @@ DEFAULT_SITE_CONFIG = {
         'members': True,
         'products': True,
         'awards': True,
+        'announcements': True,
         'openSource': True
     },
     'system': {
@@ -363,6 +364,7 @@ DEFAULT_PAGES = {
         'content': {
             'categories': [
                 '全部',
+                '公告',
                 '技术',
                 '设计',
                 '开源',
@@ -375,12 +377,31 @@ DEFAULT_PAGES = {
             },
             'posts': [
                 {
+                    'category': '公告',
+                    'date': '2026-05-20',
+                    'excerpt': '星雨作坊 2026 年秋季招新正式开始，欢迎各位同学报名加入！',
+                    'link': '',
+                    'readTime': '',
+                    'title': '2026 年秋季招新启动',
+                    'pinned': True
+                },
+                {
+                    'category': '公告',
+                    'date': '2026-05-15',
+                    'excerpt': '实验室综合官网及智能项目管理平台 v2.0 已正式部署上线。',
+                    'link': '',
+                    'readTime': '',
+                    'title': '实验室网站 v2.0 正式上线',
+                    'pinned': True
+                },
+                {
                     'category': '技术',
                     'date': '2024-12-15',
                     'excerpt': '回顾我们这一年采用的技术选型和实践经验',
                     'link': '',
                     'readTime': '8 分钟',
-                    'title': '2024 年度技术栈回顾'
+                    'title': '2024 年度技术栈回顾',
+                    'pinned': False
                 },
                 {
                     'category': '设计',
@@ -388,7 +409,8 @@ DEFAULT_PAGES = {
                     'excerpt': '分享我们如何为社团项目建立统一的设计语言',
                     'link': '',
                     'readTime': '12 分钟',
-                    'title': '从零搭建设计系统'
+                    'title': '从零搭建设计系统',
+                    'pinned': False
                 },
                 {
                     'category': '开源',
@@ -396,7 +418,8 @@ DEFAULT_PAGES = {
                     'excerpt': '我们在开源项目中总结的协作流程与规范',
                     'link': '',
                     'readTime': '6 分钟',
-                    'title': '开源协作的最佳实践'
+                    'title': '开源协作的最佳实践',
+                    'pinned': False
                 }
             ]
         },

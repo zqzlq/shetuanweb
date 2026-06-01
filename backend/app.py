@@ -30,6 +30,7 @@ def create_app(config_name=None):
         _migrate_member_users(app)
         _migrate_user_submissions(app)
         _seed_defaults()
+        _ensure_pages()
         _load_mail_config(app)
 
     @app.route('/health')
@@ -67,6 +68,33 @@ def _seed_defaults():
                 db.session.add(Page(slug=slug, title=data['title'], content=data['content']))
 
         db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _ensure_pages():
+    """Insert any pages from defaults that don't exist yet."""
+    try:
+        existing = {p.slug for p in Page.query.all()}
+        for slug, data in DEFAULT_PAGES.items():
+            if slug not in existing:
+                db.session.add(Page(slug=slug, title=data['title'], content=data['content']))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    # Ensure sections config has all keys from defaults
+    try:
+        sections_cfg = SiteConfig.query.filter_by(config_key='sections').first()
+        if sections_cfg and isinstance(sections_cfg.config_value, dict):
+            default_sections = DEFAULT_SITE_CONFIG.get('sections', {})
+            updated = False
+            for key, val in default_sections.items():
+                if key not in sections_cfg.config_value:
+                    sections_cfg.config_value[key] = val
+                    updated = True
+            if updated:
+                db.session.commit()
     except Exception:
         db.session.rollback()
 

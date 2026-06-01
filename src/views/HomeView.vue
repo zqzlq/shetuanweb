@@ -5,6 +5,7 @@
     <MembersSection v-if="showSection('members')" />
     <ProductsSection v-if="showSection('products')" />
     <AwardsSection v-if="showSection('awards')" />
+    <AnnouncementSection v-if="showSection('announcements')" />
     <OpenSourceSection v-if="showSection('openSource')" />
   </div>
 </template>
@@ -15,6 +16,7 @@ import AboutSection from '@/components/sections/AboutSection.vue'
 import MembersSection from '@/components/sections/MembersSection.vue'
 import ProductsSection from '@/components/sections/ProductsSection.vue'
 import AwardsSection from '@/components/sections/AwardsSection.vue'
+import AnnouncementSection from '@/components/sections/AnnouncementSection.vue'
 import OpenSourceSection from '@/components/sections/OpenSourceSection.vue'
 import { useSiteConfigStore } from '@/stores/siteConfig'
 

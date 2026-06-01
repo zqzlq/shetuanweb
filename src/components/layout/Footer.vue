@@ -13,7 +13,8 @@
           <router-link to="/about">关于</router-link>
           <router-link to="/members">成员</router-link>
           <router-link to="/projects">项目</router-link>
-          <router-link to="/blog">动态</router-link>
+          <router-link to="/blog">动态/公告</router-link>
+          <router-link to="/contact">联系我们</router-link>
           <router-link to="/join">加入</router-link>
         </div>
       </div>

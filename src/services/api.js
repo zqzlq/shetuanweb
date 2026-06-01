@@ -63,6 +63,13 @@ export async function submitApplication(payload) {
   })
 }
 
+export async function submitContact(payload) {
+  return request('/contact', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
 // ─── User Auth API ───
 
 const USER_TOKEN_KEY = 'xingyu_user_token'
@@ -252,6 +259,21 @@ export async function batchUpdateApplications(payload) {
 
 export async function deleteApplication(id) {
   return request(`/admin/applications/${id}`, { method: 'DELETE' })
+}
+
+export async function getContactMessages(status = 'all') {
+  return request(`/admin/contact-messages?status=${status}`)
+}
+
+export async function updateContactMessage(id, payload) {
+  return request(`/admin/contact-messages/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteContactMessage(id) {
+  return request(`/admin/contact-messages/${id}`, { method: 'DELETE' })
 }
 
 export async function exportAll() {

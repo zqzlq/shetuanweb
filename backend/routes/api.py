@@ -7,7 +7,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 import oss_service
 
-from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission
+from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission, ContactMessage
 from defaults import DEFAULT_SITE_CONFIG, DEFAULT_PAGES
 
 api_bp = Blueprint('api', __name__)
@@ -101,6 +101,58 @@ def submit_application():
         current_app.logger.exception('飞书通知失败')
 
     return jsonify({'success': True, 'message': '申请已提交', 'application': app_record.to_dict()}), 201
+
+
+# ─── Public: Contact ───
+
+@api_bp.route('/contact', methods=['POST'])
+def submit_contact():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'bad_request', 'message': '请求体为空'}), 400
+
+    required = ['name', 'email', 'subject', 'message']
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({'error': 'validation_error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
+
+    if len(data.get('message', '')) < 5:
+        return jsonify({'error': 'validation_error', 'message': '留言内容至少 5 个字'}), 400
+
+    # Rate limit
+    limit_minutes = 5
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=limit_minutes)
+    ip = request.remote_addr
+
+    dup = ContactMessage.query.filter(
+        db.or_(
+            ContactMessage.ip_address == ip,
+            ContactMessage.email == data.get('email'),
+        ),
+        ContactMessage.created_at >= cutoff,
+    ).first()
+    if dup:
+        return jsonify({'error': 'rate_limit', 'message': f'请勿重复提交，请 {limit_minutes} 分钟后再试'}), 429
+
+    msg = ContactMessage(
+        name=data['name'],
+        email=data['email'],
+        phone=data.get('phone'),
+        subject=data['subject'],
+        message=data['message'],
+        ip_address=ip,
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    # 飞书通知
+    try:
+        from application_flow import send_contact_notification
+        send_contact_notification(msg)
+    except Exception:
+        current_app.logger.exception('飞书留言通知失败')
+
+    return jsonify({'success': True, 'message': '留言已提交，我们会尽快回复'}), 201
 
 
 # ─── User Auth ───
@@ -558,6 +610,50 @@ def admin_delete_application(app_id):
     db.session.delete(app_record)
     db.session.commit()
     return jsonify({'success': True, 'message': '申请已删除'})
+
+
+# ─── Admin: Contact Messages ───
+
+@api_bp.route('/admin/contact-messages', methods=['GET'])
+@jwt_required()
+def admin_get_contact_messages():
+    status = request.args.get('status', 'all')
+    query = ContactMessage.query
+    if status != 'all':
+        query = query.filter_by(status=status)
+    messages = query.order_by(ContactMessage.created_at.desc()).all()
+    return jsonify([m.to_dict() for m in messages])
+
+
+@api_bp.route('/admin/contact-messages/<int:msg_id>', methods=['PATCH'])
+@jwt_required()
+def admin_update_contact_message(msg_id):
+    msg = ContactMessage.query.get(msg_id)
+    if not msg:
+        return jsonify({'error': 'not_found', 'message': '留言不存在'}), 404
+
+    data = request.get_json()
+    if 'status' in data:
+        msg.status = data['status']
+        if data['status'] == 'read' and not msg.read_at:
+            msg.read_at = datetime.now(timezone.utc)
+    if 'admin_note' in data:
+        msg.admin_note = data['admin_note']
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': '留言已更新', 'contact_message': msg.to_dict()})
+
+
+@api_bp.route('/admin/contact-messages/<int:msg_id>', methods=['DELETE'])
+@jwt_required()
+def admin_delete_contact_message(msg_id):
+    msg = ContactMessage.query.get(msg_id)
+    if not msg:
+        return jsonify({'error': 'not_found', 'message': '留言不存在'}), 404
+
+    db.session.delete(msg)
+    db.session.commit()
+    return jsonify({'success': True, 'message': '留言已删除'})
 
 
 # ─── Admin: Users ───

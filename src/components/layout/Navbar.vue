@@ -16,8 +16,9 @@
         <router-link to="/#about" @click="menuOpen = false">关于</router-link>
         <router-link to="/members" @click="menuOpen = false">成员</router-link>
         <router-link to="/projects" @click="menuOpen = false">项目</router-link>
-        <router-link to="/blog" @click="menuOpen = false">动态</router-link>
+        <router-link to="/blog" @click="menuOpen = false">动态/公告</router-link>
         <router-link to="/open-source" @click="menuOpen = false">开源</router-link>
+        <router-link to="/contact" @click="menuOpen = false">联系我们</router-link>
         <router-link to="/join" class="btn btn-primary btn-sm" @click="menuOpen = false">加入我们</router-link>
         <template v-if="currentUser">
           <div class="user-dropdown">

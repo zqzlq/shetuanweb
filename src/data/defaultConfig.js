@@ -235,6 +235,7 @@ export const defaultSiteConfig = {
     members: true,
     products: true,
     awards: true,
+    announcements: true,
     openSource: true
   }
 }

@@ -18,13 +18,16 @@
       </div>
 
       <div v-if="visible.length" class="posts-grid">
-        <PaperCard v-for="post in visible" :key="post.title" class="reveal post-card" glow="var(--warm-amber)">
-          <span class="tag tag-accent">{{ post.category }}</span>
+        <PaperCard v-for="post in visible" :key="post.title" class="reveal post-card" :class="{ pinned: post.pinned }" glow="var(--warm-amber)">
+          <div class="post-top">
+            <span v-if="post.pinned" class="pin-badge">置顶</span>
+            <span class="tag tag-accent">{{ post.category }}</span>
+          </div>
           <h3>{{ post.title }}</h3>
           <p>{{ post.excerpt }}</p>
           <div class="post-meta">
             <span>{{ post.date }}</span>
-            <span>{{ post.readTime }}</span>
+            <span v-if="post.readTime">{{ post.readTime }}</span>
           </div>
         </PaperCard>
       </div>
@@ -58,7 +61,7 @@ const showCount = ref(PAGE_SIZE)
 useScrollReveal()
 
 const filtered = computed(() => {
-  let list = page.content.posts
+  let list = [...page.content.posts]
   if (activeCat.value !== '全部') {
     list = list.filter((p) => p.category === activeCat.value)
   }
@@ -69,6 +72,11 @@ const filtered = computed(() => {
       p.excerpt.toLowerCase().includes(q)
     )
   }
+  list.sort((a, b) => {
+    if (a.pinned && !b.pinned) return -1
+    if (!a.pinned && b.pinned) return 1
+    return b.date.localeCompare(a.date)
+  })
   return list
 })
 
@@ -104,6 +112,9 @@ function loadMore() { showCount.value += PAGE_SIZE }
 .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; margin-bottom: 32px; }
 .post-card h3 { font-family: var(--font-heading); font-size: 17px; margin: 10px 0 8px; }
 .post-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.7; margin: 0 0 12px; }
+.post-card.pinned { border-left: 3px solid var(--warm-terracotta); }
+.post-top { display: flex; align-items: center; gap: 8px; }
+.pin-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--warm-terracotta); color: white; }
 .post-meta { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); }
 
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 15px; margin-bottom: 32px; }

@@ -164,6 +164,35 @@ def send_status_update_card(application):
     })
 
 
+def send_contact_notification(contact_msg):
+    elements = [
+        {'tag': 'markdown', 'content': f'**姓名**：{contact_msg.name}\n**邮箱**：{contact_msg.email}'},
+        {'tag': 'markdown', 'content': f'**电话**：{contact_msg.phone or "未填写"}'},
+        {'tag': 'markdown', 'content': f'**主题**：{contact_msg.subject}'},
+        {'tag': 'markdown', 'content': f'**留言内容**：\n{contact_msg.message}'},
+        {
+            'tag': 'note',
+            'elements': [
+                {'tag': 'plain_text', 'content': f'提交时间：{contact_msg.created_at.strftime("%Y-%m-%d %H:%M:%S")}'}
+            ]
+        }
+    ]
+
+    card = {
+        'config': {'wide_screen_mode': True},
+        'header': {
+            'title': {'tag': 'plain_text', 'content': f'新的留言 - {contact_msg.name}'},
+            'template': 'orange'
+        },
+        'elements': elements
+    }
+
+    return send_feishu_webhook_payload({
+        'msg_type': 'interactive',
+        'card': card
+    })
+
+
 # ─── Email ───
 
 def _escape_html(value):

@@ -12,7 +12,16 @@
     <div class="editor-card">
       <div class="card-header"><h3 class="editor-title">文章列表</h3><button class="btn btn-outline btn-xs" @click="addPost">+ 添加</button></div>
       <div v-for="(p, i) in content.posts || []" :key="i" class="list-item">
-        <div class="list-item-header"><span class="item-index">{{ p.title || '#' + (i+1) }}</span><button class="btn-icon" @click="removePost(i)">&times;</button></div>
+        <div class="list-item-header">
+          <span class="item-index">{{ p.title || '#' + (i+1) }}</span>
+          <div class="item-actions">
+            <label class="pin-toggle">
+              <input type="checkbox" :checked="p.pinned" @change="updatePost(i, 'pinned', $event.target.checked)" />
+              <span>置顶</span>
+            </label>
+            <button class="btn-icon" @click="removePost(i)">&times;</button>
+          </div>
+        </div>
         <div class="field-grid">
           <label class="field"><span>标题</span><input :value="p.title" @input="updatePost(i, 'title', $event.target.value)" /></label>
           <label class="field"><span>分类</span><input :value="p.category" @input="updatePost(i, 'category', $event.target.value)" /></label>
@@ -46,7 +55,7 @@ function updatePost(i, k, v) {
   posts[i] = { ...posts[i], [k]: v }
   up({ ...c(), posts })
 }
-function addPost() { up({ ...c(), posts: [...(c().posts || []), { title: '', excerpt: '', category: '', date: '', readTime: '', link: '' }] }) }
+function addPost() { up({ ...c(), posts: [...(c().posts || []), { title: '', excerpt: '', category: '', date: '', readTime: '', link: '', pinned: false }] }) }
 function removePost(i) { up({ ...c(), posts: (c().posts || []).filter((_, idx) => idx !== i) }) }
 
 function updateCat(i, v) {
@@ -72,6 +81,9 @@ function removeCat(i) { up({ ...c(), categories: (c().categories || []).filter((
 .list-item { border: 1px solid var(--glass-border); border-radius: 8px; padding: 12px; margin-top: 8px; background: white; }
 .list-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .item-index { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.item-actions { display: flex; align-items: center; gap: 10px; }
+.pin-toggle { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); cursor: pointer; }
+.pin-toggle input { width: 14px; height: 14px; accent-color: var(--warm-terracotta); }
 .inline-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .inline-row input { padding: 7px 10px; border: 1px solid var(--glass-border); border-radius: 6px; font-size: 12px; }
 .inline-row input:focus { outline: none; border-color: var(--warm-terracotta); }
