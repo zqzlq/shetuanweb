@@ -4,7 +4,7 @@
     <div class="section-deco-line" aria-hidden="true"></div>
     <div class="bg-dots" aria-hidden="true"></div>
     <div class="container">
-      <div class="section-heading">
+      <div class="section-heading reveal">
         <p class="eyebrow">ANNOUNCEMENTS</p>
         <div class="heading-row">
           <h2>公告通知</h2>
@@ -18,7 +18,7 @@
           v-for="item in items"
           :key="item.title"
           to="/blog"
-          class="announce-link"
+          class="announce-link reveal-card"
         >
           <div class="announce-card" :class="{ pinned: item.pinned }">
             <div class="announce-top">
@@ -36,11 +36,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useSiteConfigStore } from '@/stores/siteConfig'
+import { useInkReveal } from '@/composables/useInkReveal'
 
 const store = useSiteConfigStore()
 const page = store.getPage('blog')
+const sectionRef = ref(null)
+useInkReveal(sectionRef)
 
 const items = computed(() => {
   const list = page?.content?.posts || []
