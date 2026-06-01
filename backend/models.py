@@ -190,6 +190,45 @@ class UserSubmission(db.Model):
         }
 
 
+class Resource(db.Model):
+    __tablename__ = 'resources'
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    category = db.Column(db.String(50), nullable=False)
+    file_url = db.Column(db.String(500), nullable=False)
+    file_name = db.Column(db.String(200), nullable=False)
+    file_size = db.Column(db.Integer, nullable=True)
+    file_type = db.Column(db.String(20), nullable=True)
+    tags = db.Column(db.JSON, nullable=True)
+    preview_content = db.Column(db.Text, nullable=True)
+    download_count = db.Column(db.Integer, default=0)
+    uploader_id = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String(20), default='active')
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'description': self.description,
+            'category': self.category,
+            'file_url': self.file_url,
+            'file_name': self.file_name,
+            'file_size': self.file_size,
+            'file_type': self.file_type,
+            'tags': self.tags or [],
+            'download_count': self.download_count,
+            'uploader_id': self.uploader_id,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class ContactMessage(db.Model):
     __tablename__ = 'contact_messages'
 

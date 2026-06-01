@@ -401,4 +401,21 @@ export const defaultPages = {
       cta: { title: '在 GitHub 上查看', link: DEFAULT_GITHUB_URL, buttonText: '查看源码' },
     },
   },
+  resources: {
+    title: '资源中心',
+    content: {
+      hero: {
+        eyebrow: 'Resource Center',
+        title: '资源中心',
+        subtitle: '实验室内部学习资源与工具',
+      },
+      categories: [
+        { key: 'literature', label: '文献' },
+        { key: 'tutorial', label: '教程' },
+        { key: 'tool', label: '工具' },
+        { key: 'template', label: '表格模板' },
+        { key: 'learning', label: '学习资料' },
+      ],
+    },
+  },
 }

@@ -6,6 +6,14 @@ from flask_jwt_extended import JWTManager
 from config import config
 from models import db, AdminUser, SiteConfig, Page
 from defaults import DEFAULT_SITE_CONFIG, DEFAULT_PAGES
+
+DEFAULT_RESOURCE_CATEGORIES = {
+    'literature': '文献',
+    'tutorial': '教程',
+    'tool': '工具',
+    'template': '表格模板',
+    'learning': '学习资料',
+}
 from routes.api import api_bp
 
 
@@ -29,6 +37,7 @@ def create_app(config_name=None):
         _migrate_columns(app)
         _migrate_member_users(app)
         _migrate_user_submissions(app)
+        _migrate_resources(app)
         _seed_defaults()
         _ensure_pages()
         _load_mail_config(app)
@@ -66,6 +75,9 @@ def _seed_defaults():
         if not Page.query.first():
             for slug, data in DEFAULT_PAGES.items():
                 db.session.add(Page(slug=slug, title=data['title'], content=data['content']))
+
+        if not SiteConfig.query.filter_by(config_key='resourceCategories').first():
+            db.session.add(SiteConfig(config_key='resourceCategories', config_value=DEFAULT_RESOURCE_CATEGORIES))
 
         db.session.commit()
     except Exception:
@@ -163,6 +175,30 @@ def _migrate_user_submissions(app):
     with app.app_context():
         try:
             db.create_all()
+        except Exception:
+            pass
+
+
+def _migrate_resources(app):
+    """Ensure resources table exists and add missing columns."""
+    with app.app_context():
+        try:
+            db.create_all()
+        except Exception:
+            pass
+    res_columns = [
+        ('resources', 'tags', 'TEXT'),
+        ('resources', 'preview_content', 'TEXT'),
+    ]
+    with app.app_context():
+        try:
+            with db.engine.connect() as conn:
+                for table, col, col_type in res_columns:
+                    try:
+                        conn.execute(db.text(f'ALTER TABLE {table} ADD COLUMN {col} {col_type}'))
+                        conn.commit()
+                    except Exception:
+                        pass
         except Exception:
             pass
 

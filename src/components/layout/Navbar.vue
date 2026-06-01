@@ -27,6 +27,7 @@
             </button>
             <div v-if="userMenuOpen" class="user-dropdown-menu" @click.self="userMenuOpen = false">
               <router-link to="/user" @click="menuOpen = false; userMenuOpen = false">个人中心</router-link>
+              <router-link to="/resources" @click="menuOpen = false; userMenuOpen = false">资源中心</router-link>
               <button @click="handleLogout">退出登录</button>
             </div>
           </div>

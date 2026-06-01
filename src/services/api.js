@@ -145,6 +145,85 @@ export async function deleteUserSubmission(id) {
 
 // ─── Admin: Users & Submissions ───
 
+// ─── Resources API (user) ───
+
+export async function getResources(params = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.category) searchParams.set('category', params.category)
+  if (params.search) searchParams.set('search', params.search)
+  if (params.tag) searchParams.set('tag', params.tag)
+  if (params.page) searchParams.set('page', params.page)
+  if (params.per_page) searchParams.set('per_page', params.per_page)
+  return userRequest(`/resources?${searchParams.toString()}`)
+}
+
+export async function getResource(id) {
+  return userRequest(`/resources/${id}`)
+}
+
+export async function downloadResource(id) {
+  return userRequest(`/resources/${id}/download`, { method: 'POST' })
+}
+
+export async function previewResource(id) {
+  return userRequest(`/resources/${id}/preview`)
+}
+
+export async function getResourceTags() {
+  return userRequest('/resources/tags')
+}
+
+export async function getResourceCategories() {
+  return userRequest('/resources/categories')
+}
+
+export async function contributeResource(formData) {
+  const token = localStorage.getItem(USER_TOKEN_KEY)
+  const res = await fetch(`${API_BASE}/resources/contribute`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) throw { status: res.status, message: data.message || '提交失败' }
+  return data
+}
+
+export async function getMyContributions() {
+  return userRequest('/resources/my-contributions')
+}
+
+// ─── Resources API (admin) ───
+
+export async function getAdminResources(params = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.category) searchParams.set('category', params.category)
+  if (params.search) searchParams.set('search', params.search)
+  if (params.status) searchParams.set('status', params.status)
+  if (params.page) searchParams.set('page', params.page)
+  return request(`/admin/resources?${searchParams.toString()}`)
+}
+
+export async function createResource(formData) {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const res = await fetch(`${API_BASE}/admin/resources`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) throw { status: res.status, message: data.message || '上传失败' }
+  return data
+}
+
+export async function updateResource(id, payload) {
+  return request(`/admin/resources/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+}
+
+export async function deleteResource(id) {
+  return request(`/admin/resources/${id}`, { method: 'DELETE' })
+}
+
 export async function getUsers(status = 'all') {
   return request(`/admin/users?status=${status}`)
 }

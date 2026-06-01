@@ -7,7 +7,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 import oss_service
 
-from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission, ContactMessage
+from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission, ContactMessage, Resource
 from defaults import DEFAULT_SITE_CONFIG, DEFAULT_PAGES
 
 api_bp = Blueprint('api', __name__)
@@ -1029,3 +1029,412 @@ def admin_reset_all():
 
     db.session.commit()
     return jsonify({'success': True, 'message': '所有内容已重置为默认值'})
+
+
+# ─── Resources: User API ───
+
+DEFAULT_RESOURCE_CATEGORIES = {
+    'literature': '文献',
+    'tutorial': '教程',
+    'tool': '工具',
+    'template': '表格模板',
+    'learning': '学习资料',
+}
+
+
+def _get_resource_categories():
+    """Read resource categories from SiteConfig, fallback to defaults."""
+    cfg = SiteConfig.query.filter_by(config_key='resourceCategories').first()
+    if cfg and isinstance(cfg.config_value, dict) and cfg.config_value:
+        return cfg.config_value
+    return DEFAULT_RESOURCE_CATEGORIES
+
+
+ALLOWED_RESOURCE_EXTENSIONS = {
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    'zip', 'rar', '7z', 'tar', 'gz',
+    'txt', 'md', 'csv', 'json', 'xml',
+    'png', 'jpg', 'jpeg', 'gif', 'webp',
+    'py', 'js', 'ts', 'java', 'c', 'cpp', 'go', 'rs',
+}
+
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+TEXT_EXTENSIONS = {'txt', 'csv', 'json', 'xml', 'py', 'js', 'ts', 'java', 'c', 'cpp', 'go', 'rs'}
+MARKDOWN_EXTENSIONS = {'md'}
+PDF_EXTENSIONS = {'pdf'}
+DOCX_EXTENSIONS = {'docx'}
+
+
+def _current_user_id():
+    """Get current user ID from JWT (supports both admin and member users)."""
+    identity = get_jwt_identity()
+    if isinstance(identity, str) and identity.startswith('user_'):
+        return int(identity.replace('user_', ''))
+    return None
+
+
+@api_bp.route('/resources/categories', methods=['GET'])
+@jwt_required()
+def get_resource_categories():
+    """Return current resource categories."""
+    return jsonify({'categories': _get_resource_categories()})
+
+
+@api_bp.route('/resources', methods=['GET'])
+@jwt_required()
+def get_resources():
+    category = request.args.get('category', '')
+    search = request.args.get('search', '')
+    tag = request.args.get('tag', '')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+
+    query = Resource.query.filter_by(status='active')
+    categories = _get_resource_categories()
+    if category and category in categories:
+        query = query.filter_by(category=category)
+    if tag:
+        query = query.filter(Resource.tags.contains(tag))
+    if search:
+        query = query.filter(
+            db.or_(
+                Resource.title.ilike(f'%{search}%'),
+                Resource.description.ilike(f'%{search}%'),
+            )
+        )
+
+    query = query.order_by(Resource.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'items': [r.to_dict() for r in pagination.items],
+        'total': pagination.total,
+        'page': pagination.page,
+        'pages': pagination.pages,
+        'categories': _get_resource_categories(),
+    })
+
+
+@api_bp.route('/resources/tags', methods=['GET'])
+@jwt_required()
+def get_resource_tags():
+    """Return all unique tags across active resources."""
+    resources = Resource.query.filter_by(status='active').filter(Resource.tags.isnot(None)).all()
+    tag_counts = {}
+    for r in resources:
+        if r.tags:
+            for tag in r.tags:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    sorted_tags = sorted(tag_counts.items(), key=lambda x: -x[1])
+    return jsonify({'tags': [{'name': t, 'count': c} for t, c in sorted_tags]})
+
+
+@api_bp.route('/resources/<int:resource_id>', methods=['GET'])
+@jwt_required()
+def get_resource(resource_id):
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'active':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+    return jsonify(resource.to_dict())
+
+
+@api_bp.route('/resources/<int:resource_id>/download', methods=['POST'])
+@jwt_required()
+def download_resource(resource_id):
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'active':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    resource.download_count += 1
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'file_url': resource.file_url,
+        'file_name': resource.file_name,
+        'download_count': resource.download_count,
+    })
+
+
+@api_bp.route('/resources/contribute', methods=['POST'])
+@jwt_required()
+def contribute_resource():
+    """Allow logged-in users to submit resources for review."""
+    identity = get_jwt_identity()
+    # Extract user ID
+    if isinstance(identity, str) and identity.startswith('user_'):
+        user_id = int(identity.replace('user_', ''))
+    else:
+        # Admin can also contribute
+        user_id = None
+
+    title = request.form.get('title', '').strip()
+    description = request.form.get('description', '').strip()
+    category = request.form.get('category', '').strip()
+    tags_raw = request.form.get('tags', '').strip()
+    tags = [t.strip() for t in tags_raw.split(',') if t.strip()] if tags_raw else []
+
+    if not title:
+        return jsonify({'error': 'validation', 'message': '请填写资源标题'}), 400
+    if not category or category not in _get_resource_categories():
+        return jsonify({'error': 'validation', 'message': '请选择有效的资源分类'}), 400
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'error': 'validation', 'message': '请上传文件'}), 400
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_RESOURCE_EXTENSIONS:
+        return jsonify({'error': 'validation', 'message': f'不支持的文件类型: .{ext}'}), 400
+
+    file_bytes = file.read()
+    file_size = len(file_bytes)
+    filename = f"{uuid4().hex}.{ext}"
+
+    file_url = oss_service.upload_file(f"resources/{filename}", file_bytes)
+    if not file_url:
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        resource_dir = os.path.join(upload_folder, 'resources')
+        os.makedirs(resource_dir, exist_ok=True)
+        filepath = os.path.join(resource_dir, filename)
+        with open(filepath, 'wb') as f:
+            f.write(file_bytes)
+        file_url = f'/uploads/resources/{filename}'
+
+    preview_content = None
+    if ext in TEXT_EXTENSIONS | MARKDOWN_EXTENSIONS | {'csv', 'json', 'xml'}:
+        try:
+            preview_content = file_bytes.decode('utf-8', errors='replace')[:50000]
+        except Exception:
+            pass
+
+    resource = Resource(
+        title=title,
+        description=description,
+        category=category,
+        file_url=file_url,
+        file_name=file.filename,
+        file_size=file_size,
+        file_type=ext,
+        tags=tags,
+        preview_content=preview_content,
+        uploader_id=user_id,
+        status='pending',
+    )
+    db.session.add(resource)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '资源已提交，等待管理员审核', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/resources/my-contributions', methods=['GET'])
+@jwt_required()
+def get_my_contributions():
+    """Get resources contributed by the current user."""
+    identity = get_jwt_identity()
+    if isinstance(identity, str) and identity.startswith('user_'):
+        user_id = int(identity.replace('user_', ''))
+    else:
+        return jsonify({'items': []})
+
+    resources = Resource.query.filter_by(uploader_id=user_id).order_by(Resource.created_at.desc()).all()
+    return jsonify({'items': [r.to_dict() for r in resources]})
+
+
+@api_bp.route('/resources/<int:resource_id>/preview', methods=['GET'])
+@jwt_required()
+def preview_resource(resource_id):
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'active':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    ext = (resource.file_type or '').lower()
+
+    if ext in IMAGE_EXTENSIONS:
+        return jsonify({'type': 'image', 'url': resource.file_url})
+
+    if ext in PDF_EXTENSIONS:
+        return jsonify({'type': 'pdf', 'url': resource.file_url})
+
+    if ext in MARKDOWN_EXTENSIONS:
+        if resource.preview_content:
+            return jsonify({'type': 'markdown', 'content': resource.preview_content})
+        return jsonify({'type': 'markdown', 'content': '', 'url': resource.file_url})
+
+    if ext in DOCX_EXTENSIONS:
+        if resource.preview_content:
+            return jsonify({'type': 'html', 'content': resource.preview_content})
+        return jsonify({'type': 'html', 'content': '', 'url': resource.file_url})
+
+    if ext in TEXT_EXTENSIONS:
+        if resource.preview_content:
+            return jsonify({'type': 'text', 'content': resource.preview_content, 'language': ext})
+        return jsonify({'type': 'text', 'content': '', 'url': resource.file_url, 'language': ext})
+
+    return jsonify({'type': 'unsupported', 'file_type': ext})
+
+
+# ─── Resources: Admin API ───
+
+@api_bp.route('/admin/resources', methods=['GET'])
+@jwt_required()
+def admin_get_resources():
+    category = request.args.get('category', '')
+    search = request.args.get('search', '')
+    status = request.args.get('status', 'all')
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+
+    query = Resource.query
+    categories = _get_resource_categories()
+    if category and category in categories:
+        query = query.filter_by(category=category)
+    if status and status != 'all':
+        query = query.filter_by(status=status)
+    if search:
+        query = query.filter(
+            db.or_(
+                Resource.title.ilike(f'%{search}%'),
+                Resource.description.ilike(f'%{search}%'),
+                Resource.file_name.ilike(f'%{search}%'),
+            )
+        )
+
+    query = query.order_by(Resource.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'items': [r.to_dict() for r in pagination.items],
+        'total': pagination.total,
+        'page': pagination.page,
+        'pages': pagination.pages,
+        'categories': _get_resource_categories(),
+    })
+
+
+@api_bp.route('/admin/resources', methods=['POST'])
+@jwt_required()
+def admin_create_resource():
+    admin = AdminUser.query.get(int(get_jwt_identity()))
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    title = request.form.get('title', '').strip()
+    description = request.form.get('description', '').strip()
+    category = request.form.get('category', '').strip()
+    tags_raw = request.form.get('tags', '').strip()
+    tags = [t.strip() for t in tags_raw.split(',') if t.strip()] if tags_raw else []
+
+    if not title:
+        return jsonify({'error': 'validation', 'message': '请填写资源标题'}), 400
+    if not category or category not in _get_resource_categories():
+        return jsonify({'error': 'validation', 'message': '请选择有效的资源分类'}), 400
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'error': 'validation', 'message': '请上传文件'}), 400
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_RESOURCE_EXTENSIONS:
+        return jsonify({'error': 'validation', 'message': f'不支持的文件类型: .{ext}'}), 400
+
+    file_bytes = file.read()
+    file_size = len(file_bytes)
+    filename = f"{uuid4().hex}.{ext}"
+
+    # Try OSS upload first
+    file_url = oss_service.upload_file(f"resources/{filename}", file_bytes)
+    if not file_url:
+        # Fallback to local storage
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        resource_dir = os.path.join(upload_folder, 'resources')
+        os.makedirs(resource_dir, exist_ok=True)
+        filepath = os.path.join(resource_dir, filename)
+        with open(filepath, 'wb') as f:
+            f.write(file_bytes)
+        file_url = f'/uploads/resources/{filename}'
+
+    # Extract preview content for text-based files
+    preview_content = None
+    if ext in TEXT_EXTENSIONS | MARKDOWN_EXTENSIONS | {'csv', 'json', 'xml'}:
+        try:
+            preview_content = file_bytes.decode('utf-8', errors='replace')[:50000]
+        except Exception:
+            pass
+
+    resource = Resource(
+        title=title,
+        description=description,
+        category=category,
+        file_url=file_url,
+        file_name=file.filename,
+        file_size=file_size,
+        file_type=ext,
+        tags=tags,
+        preview_content=preview_content,
+        uploader_id=admin.id,
+    )
+    db.session.add(resource)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '资源上传成功', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/admin/resources/<int:resource_id>', methods=['PUT'])
+@jwt_required()
+def admin_update_resource(resource_id):
+    admin = AdminUser.query.get(int(get_jwt_identity()))
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    data = request.get_json()
+    if 'title' in data:
+        resource.title = data['title'].strip()
+    if 'description' in data:
+        resource.description = data['description'].strip()
+    if 'category' in data and data['category'] in _get_resource_categories():
+        resource.category = data['category']
+    if 'tags' in data:
+        resource.tags = data['tags'] if isinstance(data['tags'], list) else []
+    if 'status' in data:
+        resource.status = data['status']
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': '资源已更新', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/admin/resources/<int:resource_id>', methods=['DELETE'])
+@jwt_required()
+def admin_delete_resource(resource_id):
+    admin = AdminUser.query.get(int(get_jwt_identity()))
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    # Try to delete file from OSS
+    if resource.file_url and 'oss' in resource.file_url:
+        try:
+            parts = resource.file_url.split('/')
+            key = '/'.join(parts[3:])  # Remove https://bucket.endpoint/
+            oss_service.delete_file(key)
+        except Exception:
+            pass
+    # Try to delete local file
+    elif resource.file_url and resource.file_url.startswith('/uploads/'):
+        try:
+            local_path = os.path.join(current_app.config['UPLOAD_FOLDER'], resource.file_url.replace('/uploads/', ''))
+            if os.path.exists(local_path):
+                os.remove(local_path)
+        except Exception:
+            pass
+
+    db.session.delete(resource)
+    db.session.commit()
+    return jsonify({'success': True, 'message': '资源已删除'})

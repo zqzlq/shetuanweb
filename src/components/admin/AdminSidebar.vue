@@ -30,6 +30,9 @@
         <button class="nav-item" :class="{ active: activeSection === 'contactMessages' }" @click="$emit('navigate', 'contactMessages')">
           <span class="nav-label">留言管理</span>
         </button>
+        <button class="nav-item" :class="{ active: activeSection === 'resources' }" @click="$emit('navigate', 'resources')">
+          <span class="nav-label">资源管理</span>
+        </button>
       </div>
     </nav>
   </aside>
