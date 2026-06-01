@@ -102,6 +102,9 @@ def _ensure_pages():
 def _migrate_columns(app):
     """Add missing columns to existing tables (SQLite ALTER TABLE)."""
     new_columns = [
+        ('contact_messages', 'is_anonymous', 'BOOLEAN DEFAULT 0'),
+        ('contact_messages', 'reply', 'TEXT'),
+        ('contact_messages', 'replied_at', 'DATETIME'),
         ('applications', 'processed_at', 'DATETIME'),
         ('applications', 'last_email_type', 'VARCHAR(50)'),
         ('applications', 'last_email_sent', 'BOOLEAN DEFAULT 0'),

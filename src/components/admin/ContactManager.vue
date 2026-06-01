@@ -25,24 +25,36 @@
 
         <div v-if="expandedId === msg.id" class="msg-detail">
           <div class="detail-grid">
-            <div class="detail-item"><span>邮箱</span><strong>{{ msg.email }}</strong></div>
+            <div class="detail-item"><span>联系人</span><strong>{{ msg.is_anonymous ? '匿名用户' : msg.name }}</strong></div>
+            <div class="detail-item"><span>邮箱</span><strong>{{ msg.email || '未填写' }}</strong></div>
             <div class="detail-item"><span>电话</span><strong>{{ msg.phone || '未填写' }}</strong></div>
             <div class="detail-item"><span>提交时间</span><strong>{{ formatDateTime(msg.created_at) }}</strong></div>
             <div class="detail-item" v-if="msg.read_at"><span>阅读时间</span><strong>{{ formatDateTime(msg.read_at) }}</strong></div>
+            <div class="detail-item" v-if="msg.replied_at"><span>回复时间</span><strong>{{ formatDateTime(msg.replied_at) }}</strong></div>
           </div>
           <div class="detail-block">
             <span>留言内容</span>
             <p>{{ msg.message }}</p>
           </div>
 
+          <div v-if="msg.reply" class="detail-block reply-block">
+            <span>管理员回复</span>
+            <p>{{ msg.reply }}</p>
+          </div>
+
+          <div class="detail-block">
+            <span>回复留言</span>
+            <textarea v-model="editingReply" rows="3" :placeholder="msg.reply ? '修改回复...' : '输入回复内容...'"></textarea>
+          </div>
+
           <div class="detail-block">
             <span>管理员备注</span>
-            <textarea v-model="editingNote" rows="2" placeholder="添加备注..."></textarea>
+            <textarea v-model="editingNote" rows="2" placeholder="添加备注（仅内部可见）..."></textarea>
           </div>
 
           <div class="msg-actions">
+            <button v-if="editingReply" class="btn btn-primary btn-sm" @click="submitReply(msg.id)">发送回复</button>
             <button v-if="msg.status === 'unread'" class="btn btn-outline btn-sm" @click="updateStatus(msg.id, 'read')">标记已读</button>
-            <button v-if="msg.status === 'unread' || msg.status === 'read'" class="btn btn-primary btn-sm" @click="updateStatus(msg.id, 'replied')">标记已回复</button>
             <button v-if="msg.status !== 'archived'" class="btn btn-outline btn-sm" @click="updateStatus(msg.id, 'archived')">归档</button>
             <button class="btn btn-outline btn-sm btn-danger" @click="deleteMsg(msg.id)">删除</button>
           </div>
@@ -61,6 +73,7 @@ const loading = ref(false)
 const activeStatus = ref('all')
 const expandedId = ref(null)
 const editingNote = ref('')
+const editingReply = ref('')
 
 const statuses = [
   { key: 'all', label: '全部' },
@@ -94,9 +107,11 @@ function toggleExpand(msg) {
   if (expandedId.value === msg.id) {
     expandedId.value = null
     editingNote.value = ''
+    editingReply.value = ''
   } else {
     expandedId.value = msg.id
     editingNote.value = msg.admin_note || ''
+    editingReply.value = ''
     if (msg.status === 'unread') {
       updateStatus(msg.id, 'read', true)
     }
@@ -128,6 +143,20 @@ async function updateStatus(id, status, silent = false) {
     }
   } catch (e) {
     if (!silent) alert('更新失败: ' + (e.message || '未知错误'))
+  }
+}
+
+async function submitReply(id) {
+  if (!editingReply.value.trim()) return
+  try {
+    const payload = { reply: editingReply.value.trim() }
+    if (editingNote.value) payload.admin_note = editingNote.value
+    await updateContactMessage(id, payload)
+    editingReply.value = ''
+    editingNote.value = ''
+    await loadMessages()
+  } catch (e) {
+    alert('回复失败: ' + (e.message || '未知错误'))
   }
 }
 
@@ -190,6 +219,8 @@ function formatDateTime(iso) {
 
 .msg-actions { display: flex; gap: 8px; margin-top: 16px; }
 .btn-sm { padding: 6px 14px; font-size: 12px; }
+.reply-block { background: rgba(192, 96, 64, 0.04); padding: 12px; border-radius: 8px; border-left: 3px solid var(--warm-terracotta); }
+.reply-block p { white-space: pre-wrap; }
 .btn-danger { color: #e05050; border-color: #e05050; }
 .btn-danger:hover { background: #e05050; color: white; }
 

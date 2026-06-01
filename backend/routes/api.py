@@ -111,10 +111,16 @@ def submit_contact():
     if not data:
         return jsonify({'error': 'bad_request', 'message': '请求体为空'}), 400
 
-    required = ['name', 'email', 'subject', 'message']
-    missing = [f for f in required if not data.get(f)]
-    if missing:
-        return jsonify({'error': 'validation_error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
+    is_anonymous = data.get('is_anonymous', False)
+
+    if not is_anonymous:
+        required = ['name', 'email', 'subject', 'message']
+        missing = [f for f in required if not data.get(f)]
+        if missing:
+            return jsonify({'error': 'validation_error', 'message': f'缺少必填字段: {", ".join(missing)}'}), 400
+    else:
+        if not data.get('subject') or not data.get('message'):
+            return jsonify({'error': 'validation_error', 'message': '请填写主题和留言内容'}), 400
 
     if len(data.get('message', '')) < 5:
         return jsonify({'error': 'validation_error', 'message': '留言内容至少 5 个字'}), 400
@@ -125,22 +131,20 @@ def submit_contact():
     ip = request.remote_addr
 
     dup = ContactMessage.query.filter(
-        db.or_(
-            ContactMessage.ip_address == ip,
-            ContactMessage.email == data.get('email'),
-        ),
+        ContactMessage.ip_address == ip,
         ContactMessage.created_at >= cutoff,
     ).first()
     if dup:
         return jsonify({'error': 'rate_limit', 'message': f'请勿重复提交，请 {limit_minutes} 分钟后再试'}), 429
 
     msg = ContactMessage(
-        name=data['name'],
-        email=data['email'],
+        name=data.get('name', '匿名用户') if not is_anonymous else '匿名用户',
+        email=data.get('email', '') if not is_anonymous else '',
         phone=data.get('phone'),
         subject=data['subject'],
         message=data['message'],
         ip_address=ip,
+        is_anonymous=is_anonymous,
     )
     db.session.add(msg)
     db.session.commit()
@@ -639,6 +643,11 @@ def admin_update_contact_message(msg_id):
             msg.read_at = datetime.now(timezone.utc)
     if 'admin_note' in data:
         msg.admin_note = data['admin_note']
+    if 'reply' in data:
+        msg.reply = data['reply']
+        if data['reply']:
+            msg.replied_at = datetime.now(timezone.utc)
+            msg.status = 'replied'
 
     db.session.commit()
     return jsonify({'success': True, 'message': '留言已更新', 'contact_message': msg.to_dict()})

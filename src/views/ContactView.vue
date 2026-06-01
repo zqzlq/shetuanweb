@@ -68,18 +68,22 @@
             </div>
 
             <form v-else @submit.prevent="submitForm">
+              <label class="anonymous-toggle">
+                <input type="checkbox" v-model="form.is_anonymous" />
+                <span>匿名留言</span>
+              </label>
               <div class="form-grid">
-                <label :class="{ error: errors.name }">
+                <label v-if="!form.is_anonymous" :class="{ error: errors.name }">
                   <span>姓名 <em>*</em></span>
                   <input v-model="form.name" type="text" placeholder="你的姓名" @blur="validateField('name')" />
                   <small v-if="errors.name" class="error-msg">{{ errors.name }}</small>
                 </label>
-                <label :class="{ error: errors.email }">
+                <label v-if="!form.is_anonymous" :class="{ error: errors.email }">
                   <span>邮箱 <em>*</em></span>
                   <input v-model="form.email" type="email" placeholder="邮箱地址" @blur="validateField('email')" />
                   <small v-if="errors.email" class="error-msg">{{ errors.email }}</small>
                 </label>
-                <label>
+                <label v-if="!form.is_anonymous">
                   <span>电话（选填）</span>
                   <input v-model="form.phone" type="tel" placeholder="手机号" />
                 </label>
@@ -120,7 +124,7 @@ const submitting = ref(false)
 const submitResult = ref(null)
 
 const form = reactive({
-  name: '', email: '', phone: '', subject: '', message: '',
+  name: '', email: '', phone: '', subject: '', message: '', is_anonymous: false,
 })
 
 const errors = reactive({
@@ -159,7 +163,8 @@ function validateField(field) {
 
 function validateAll() {
   let valid = true
-  for (const field of Object.keys(rules)) {
+  const fields = form.is_anonymous ? ['subject', 'message'] : Object.keys(rules)
+  for (const field of fields) {
     if (!validateField(field)) valid = false
   }
   return valid
@@ -170,13 +175,17 @@ async function submitForm() {
   submitting.value = true
   submitResult.value = null
   try {
-    const result = await submitContact({
-      name: form.name.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
+    const payload = {
       subject: form.subject.trim(),
       message: form.message.trim(),
-    })
+      is_anonymous: form.is_anonymous,
+    }
+    if (!form.is_anonymous) {
+      payload.name = form.name.trim()
+      payload.email = form.email.trim()
+      payload.phone = form.phone.trim()
+    }
+    const result = await submitContact(payload)
     submitResult.value = { success: true, message: result.message || '留言已提交' }
   } catch (e) {
     submitResult.value = { success: false, message: e.message || '提交失败，请稍后重试' }
@@ -191,6 +200,7 @@ function resetForm() {
   form.phone = ''
   form.subject = ''
   form.message = ''
+  form.is_anonymous = false
   Object.keys(errors).forEach(k => errors[k] = '')
   submitResult.value = null
 }
@@ -224,6 +234,22 @@ function resetForm() {
   font-size: 14px;
   color: var(--text-muted);
   margin: -12px 0 24px;
+}
+
+.anonymous-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.anonymous-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--warm-terracotta);
 }
 
 .info-list {
