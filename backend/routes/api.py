@@ -1,4 +1,5 @@
 import os
+import json as _json
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 from flask import Blueprint, jsonify, request, current_app
@@ -1855,6 +1856,164 @@ def _read_text_content(resource):
     except Exception:
         pass
     return None
+
+
+# ─── Resources: AI Assistant ───
+
+@api_bp.route('/resources/chat', methods=['POST'])
+@jwt_required()
+def resource_chat():
+    """AI 资源助手对话（SSE 流式）"""
+    from ai_service import is_configured, chat_stream, execute_tool_call
+    from ai_tools import TOOLS, SYSTEM_PROMPT
+
+    if not is_configured():
+        return jsonify({'error': 'ai_not_configured', 'message': 'AI 未配置，请在系统设置中填写 API Key'}), 400
+
+    data = request.get_json() or {}
+    user_msg = (data.get('message') or '').strip()
+    history = data.get('history') or []
+
+    if not user_msg:
+        return jsonify({'error': 'validation', 'message': '消息不能为空'}), 400
+
+    # 构建消息列表
+    messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+    # 携带最近的历史（最多 20 轮）
+    for msg in history[-40:]:
+        if msg.get('role') in ('user', 'assistant') and msg.get('content'):
+            messages.append({'role': msg['role'], 'content': msg['content']})
+    messages.append({'role': 'user', 'content': user_msg})
+
+    # 在请求上下文中捕获 app 引用
+    app = current_app._get_current_object()
+
+    def generate():
+        """SSE 生成器"""
+        # 推送 app context，使数据库查询在生成器中可用
+        with app.app_context():
+            # 最多执行 3 轮工具调用
+            for round_idx in range(3):
+                tool_calls_found = False
+                full_text = ''
+
+                for event_type, event_data in chat_stream(messages, tools=TOOLS):
+                    if event_type == 'text':
+                        full_text += event_data['content']
+                        yield f'event: text\ndata: {_json.dumps(event_data, ensure_ascii=False)}\n\n'
+
+                    elif event_type == 'tool_calls':
+                        tool_calls_found = True
+                        calls = event_data['calls']
+
+                        # 通知前端正在调用工具
+                        for tc in calls:
+                            yield f'event: tool\ndata: {_json.dumps({"name": tc["function"]["name"], "status": "calling"}, ensure_ascii=False)}\n\n'
+
+                        # 将 assistant 的 tool_calls 消息加入历史
+                        messages.append({
+                            'role': 'assistant',
+                            'content': None,
+                            'tool_calls': calls,
+                        })
+
+                        # 执行每个工具
+                        for tc in calls:
+                            result = execute_tool_call(tc)
+                            messages.append(result)
+                            yield f'event: tool\ndata: {_json.dumps({"name": tc["function"]["name"], "status": "done"}, ensure_ascii=False)}\n\n'
+
+                            # 解析工具结果，如果是资源列表则发送结构化数据
+                            try:
+                                tool_result = _json.loads(result['content'])
+                                func_name = tc['function']['name']
+                                if func_name == 'search_resources' and tool_result.get('results'):
+                                    yield f'event: resources\ndata: {_json.dumps({"type": "search", "resources": tool_result["results"]}, ensure_ascii=False)}\n\n'
+                                elif func_name == 'list_recent_resources' and tool_result.get('results'):
+                                    yield f'event: resources\ndata: {_json.dumps({"type": "recent", "resources": tool_result["results"]}, ensure_ascii=False)}\n\n'
+                                elif func_name == 'get_resource_detail' and tool_result.get('id'):
+                                    yield f'event: resources\ndata: {_json.dumps({"type": "detail", "resources": [tool_result]}, ensure_ascii=False)}\n\n'
+                                elif func_name == 'get_resource_stats' and tool_result.get('total_files') is not None:
+                                    yield f'event: stats\ndata: {_json.dumps(tool_result, ensure_ascii=False)}\n\n'
+                                elif func_name == 'list_folders' and tool_result.get('folders'):
+                                    yield f'event: folders\ndata: {_json.dumps(tool_result, ensure_ascii=False)}\n\n'
+                            except Exception:
+                                pass
+
+                    elif event_type == 'error':
+                        yield f'event: error\ndata: {_json.dumps(event_data, ensure_ascii=False)}\n\n'
+                        return
+
+                    elif event_type == 'done':
+                        if not tool_calls_found:
+                            # 没有工具调用，流式完成
+                            if full_text:
+                                messages.append({'role': 'assistant', 'content': full_text})
+                            yield f'event: done\ndata: {_json.dumps({}, ensure_ascii=False)}\n\n'
+                            return
+
+                # 如果这轮有工具调用，继续下一轮让 LLM 生成最终回复
+                if not tool_calls_found:
+                    break
+
+            yield f'event: done\ndata: {_json.dumps({}, ensure_ascii=False)}\n\n'
+
+    return current_app.response_class(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        }
+    )
+
+
+@api_bp.route('/resources/suggest-tags', methods=['POST'])
+@jwt_required()
+def suggest_tags():
+    """AI 推荐标签和描述"""
+    from ai_service import is_configured, chat
+
+    if not is_configured():
+        return jsonify({'error': 'ai_not_configured', 'message': 'AI 未配置'}), 400
+
+    data = request.get_json() or {}
+    filename = (data.get('filename') or '').strip()
+    description = (data.get('description') or '').strip()
+
+    if not filename:
+        return jsonify({'error': 'validation', 'message': '文件名不能为空'}), 400
+
+    prompt = f'根据以下文件信息，推荐 3-5 个中文标签和一段简短描述（50字以内）。\n文件名：{filename}'
+    if description:
+        prompt += f'\n已有描述：{description}'
+
+    prompt += '\n\n请严格按 JSON 格式返回：{{"tags": ["标签1", "标签2"], "description": "简短描述"}}'
+
+    try:
+        resp = chat(
+            messages=[
+                {'role': 'system', 'content': '你是资源标签推荐助手。只返回 JSON，不要其他文字。'},
+                {'role': 'user', 'content': prompt},
+            ],
+            temperature=0.3,
+            max_tokens=200,
+        )
+        content = resp['choices'][0]['message']['content']
+        # 尝试解析 JSON
+        import re
+        json_match = re.search(r'\{[^{}]*\}', content)
+        if json_match:
+            result = _json.loads(json_match.group())
+            return jsonify({
+                'tags': result.get('tags', [])[:5],
+                'description': result.get('description', ''),
+            })
+    except Exception as e:
+        pass
+
+    return jsonify({'tags': [], 'description': ''})
 
 
 # ─── Resources: Admin API ───

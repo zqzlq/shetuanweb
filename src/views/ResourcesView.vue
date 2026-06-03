@@ -235,7 +235,15 @@
               </template>
             </div>
             <div class="modal-fields">
-              <label class="m-field"><span>标签（逗号分隔）</span><input v-model="uploadForm.tags" placeholder="标签1, 标签2" /></label>
+              <label class="m-field"><span>标签（逗号分隔）</span>
+                <div class="m-field-row">
+                  <input v-model="uploadForm.tags" placeholder="标签1, 标签2" />
+                  <button class="btn-ai-suggest" @click="handleAiSuggest" :disabled="!uploadFile || aiSuggesting" :title="uploadFile ? 'AI 推荐标签' : '请先选择文件'">
+                    <span v-if="aiSuggesting" class="ai-spin">⏳</span>
+                    <span v-else>🤖 AI</span>
+                  </button>
+                </div>
+              </label>
               <label class="m-field full"><span>描述</span><textarea v-model="uploadForm.description" rows="2" placeholder="文件描述..."></textarea></label>
             </div>
             <div v-if="uploading" class="upload-progress">
@@ -381,8 +389,11 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { getResources, getResourceTags, getResourceStats, uploadResource, createFolder as apiCreateFolder, downloadResource, batchDownloadResources, previewResource as apiPreview, updateResource, getFolders, getResourceVersions, restoreVersion, createShareLink, removeShareLink, getComments, addComment } from '@/services/api'
+import { useRoute } from 'vue-router'
+import { getResources, getResourceTags, getResourceStats, uploadResource, createFolder as apiCreateFolder, downloadResource, batchDownloadResources, previewResource as apiPreview, updateResource, getFolders, getResourceVersions, restoreVersion, createShareLink, removeShareLink, getComments, addComment, suggestTags } from '@/services/api'
 import { isUserLoggedIn } from '@/services/api'
+
+const route = useRoute()
 import { marked } from 'marked'
 
 const ICON_COLORS = { folder:'#f5a623', pdf:'#e74c3c', doc:'#2b7cd3', docx:'#2b7cd3', rtf:'#2b7cd3', xls:'#217346', xlsx:'#217346', csv:'#217346', ppt:'#d04423', pptx:'#d04423', jpg:'#27ae60', jpeg:'#27ae60', png:'#27ae60', gif:'#27ae60', webp:'#27ae60', svg:'#27ae60', zip:'#e67e22', rar:'#e67e22', '7z':'#e67e22', tar:'#e67e22', gz:'#e67e22', py:'#3572a5', js:'#f1e05a', ts:'#3178c6', html:'#e34c26', css:'#563d7c', json:'#292929', txt:'#6b5e52', md:'#6b5e52', mp4:'#9b59b6', mp3:'#9b59b6' }
@@ -409,7 +420,7 @@ const isAllChecked=computed(()=>{ const all=[...folders.value.map(f=>'f-'+f.id),
 function toggleSelect(id){ const s=new Set(selectedIds.value); s.has(id)?s.delete(id):s.add(id); selectedIds.value=s }
 function toggleSelectAll(){ if(isAllChecked.value){selectedIds.value=new Set();return}; const all=[...folders.value.map(f=>'f-'+f.id),...files.value.map(f=>'r-'+f.id)]; selectedIds.value=new Set(all) }
 
-const showUpload=ref(false), uploadFile=ref(null), uploading=ref(false), uploadProgress=ref(0), uploadDragover=ref(false), pageDragover=ref(false), uploadForm=ref({tags:'',description:''})
+const showUpload=ref(false), uploadFile=ref(null), uploading=ref(false), uploadProgress=ref(0), uploadDragover=ref(false), pageDragover=ref(false), uploadForm=ref({tags:'',description:''}), aiSuggesting=ref(false)
 const showCreateFolder=ref(false), folderName=ref('')
 const previewTarget=ref(null), previewData=ref(null), previewLoading=ref(false), previewPdfBlob=ref(null)
 const imagePreview=ref(null), imageIndex=ref(0), imageZoom=ref(1)
@@ -475,7 +486,41 @@ function handleKeydown(e){ if(['INPUT','TEXTAREA','SELECT'].includes(e.target.ta
 }
 async function handleBatchDelete(){ if(!confirm(`删除${selectedIds.value.size}项？`)) return; for(const id of [...selectedIds.value]){ try{const{deleteResource}=await import('@/services/api');await deleteResource(parseInt(id.replace(/[fr]-/,'')))}catch{} }; selectedIds.value=new Set(); loadResources() }
 
-onMounted(()=>{ if(isLoggedIn.value) loadResources(); window.addEventListener('keydown',handleKeydown) })
+async function handleAiSuggest(){
+  if(!uploadFile.value||aiSuggesting.value) return
+  aiSuggesting.value=true
+  try{
+    const d=await suggestTags(uploadFile.value.name, uploadForm.value.description)
+    if(d.tags&&d.tags.length) uploadForm.value.tags=d.tags.join(', ')
+    if(d.description) uploadForm.value.description=d.description
+  }catch(e){
+    // 静默失败，不打扰用户
+    console.warn('AI 推荐失败:', e.message)
+  }finally{
+    aiSuggesting.value=false
+  }
+}
+
+onMounted(()=>{
+  // 支持 folder 查询参数，从外部跳转时定位到指定文件夹
+  const folderQuery = route.query.folder
+  if(folderQuery) currentFolder.value = parseInt(folderQuery)
+  if(isLoggedIn.value) loadResources()
+  window.addEventListener('keydown',handleKeydown)
+})
+
+// 监听路由参数变化，支持从聊天助手定位文件夹
+watch(()=>route.query.folder, (val)=>{
+  if(val){
+    currentFolder.value = parseInt(val)
+  } else {
+    currentFolder.value = null
+  }
+  page.value = 1
+  search.value = ''
+  filterTag.value = ''
+  loadResources()
+})
 onUnmounted(()=>{ window.removeEventListener('keydown',handleKeydown) })
 watch(isLoggedIn,v=>{ if(v) loadResources() })
 watch(previewTarget,v=>{ if(!v&&previewPdfBlob.value){ URL.revokeObjectURL(previewPdfBlob.value); previewPdfBlob.value=null } })
@@ -630,6 +675,13 @@ watch(previewTarget,v=>{ if(!v&&previewPdfBlob.value){ URL.revokeObjectURL(previ
 .m-field span{font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:5px}
 .m-field input,.m-field select,.m-field textarea{padding:9px 12px;border:1px solid var(--glass-border);border-radius:var(--radius-md);font-size:13px;background:white;font-family:inherit;transition:border-color .15s}
 .m-field input:focus,.m-field select:focus,.m-field textarea:focus{outline:none;border-color:var(--warm-terracotta);box-shadow:0 0 0 3px rgba(192,96,64,.06)}
+.m-field-row{display:flex;gap:6px}
+.m-field-row input{flex:1}
+.btn-ai-suggest{border:1.5px solid var(--glass-border);background:white;border-radius:var(--radius-md);padding:0 10px;font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s;display:flex;align-items:center;gap:4px}
+.btn-ai-suggest:hover:not(:disabled){border-color:var(--warm-terracotta);color:var(--warm-terracotta);background:rgba(192,96,64,.04)}
+.btn-ai-suggest:disabled{opacity:.5;cursor:not-allowed}
+.ai-spin{display:inline-block;animation:ai-spin-anim 1s linear infinite}
+@keyframes ai-spin-anim{to{transform:rotate(360deg)}}
 
 /* 预览 */
 /* 非图片预览全屏 */

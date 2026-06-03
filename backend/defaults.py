@@ -259,6 +259,10 @@ DEFAULT_SITE_CONFIG = {
         'smtpUseSsl': True,
         'smtpUseTls': False,
         'groupChatInviteLink': '',
+        'aiProvider': 'deepseek',
+        'aiApiKey': '',
+        'aiBaseUrl': '',
+        'aiModel': '',
     }
 }
 

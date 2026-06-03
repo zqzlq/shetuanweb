@@ -428,6 +428,15 @@ export async function addComment(resourceId, content) {
   return userRequest(`/resources/${resourceId}/comments`, { method: 'POST', body: JSON.stringify({ content }) })
 }
 
+// ─── Resources AI API ───
+
+export async function suggestTags(filename, description = '') {
+  return userRequest('/resources/suggest-tags', {
+    method: 'POST',
+    body: JSON.stringify({ filename, description }),
+  })
+}
+
 // ─── Resources API (admin) ───
 
 export async function getAdminResources(params = {}) {
