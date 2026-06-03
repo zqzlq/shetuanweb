@@ -145,85 +145,6 @@ export async function deleteUserSubmission(id) {
 
 // ─── Admin: Users & Submissions ───
 
-// ─── Resources API (user) ───
-
-export async function getResources(params = {}) {
-  const searchParams = new URLSearchParams()
-  if (params.category) searchParams.set('category', params.category)
-  if (params.search) searchParams.set('search', params.search)
-  if (params.tag) searchParams.set('tag', params.tag)
-  if (params.page) searchParams.set('page', params.page)
-  if (params.per_page) searchParams.set('per_page', params.per_page)
-  return userRequest(`/resources?${searchParams.toString()}`)
-}
-
-export async function getResource(id) {
-  return userRequest(`/resources/${id}`)
-}
-
-export async function downloadResource(id) {
-  return userRequest(`/resources/${id}/download`, { method: 'POST' })
-}
-
-export async function previewResource(id) {
-  return userRequest(`/resources/${id}/preview`)
-}
-
-export async function getResourceTags() {
-  return userRequest('/resources/tags')
-}
-
-export async function getResourceCategories() {
-  return userRequest('/resources/categories')
-}
-
-export async function contributeResource(formData) {
-  const token = localStorage.getItem(USER_TOKEN_KEY)
-  const res = await fetch(`${API_BASE}/resources/contribute`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  })
-  const data = await res.json()
-  if (!res.ok) throw { status: res.status, message: data.message || '提交失败' }
-  return data
-}
-
-export async function getMyContributions() {
-  return userRequest('/resources/my-contributions')
-}
-
-// ─── Resources API (admin) ───
-
-export async function getAdminResources(params = {}) {
-  const searchParams = new URLSearchParams()
-  if (params.category) searchParams.set('category', params.category)
-  if (params.search) searchParams.set('search', params.search)
-  if (params.status) searchParams.set('status', params.status)
-  if (params.page) searchParams.set('page', params.page)
-  return request(`/admin/resources?${searchParams.toString()}`)
-}
-
-export async function createResource(formData) {
-  const token = localStorage.getItem(TOKEN_KEY)
-  const res = await fetch(`${API_BASE}/admin/resources`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  })
-  const data = await res.json()
-  if (!res.ok) throw { status: res.status, message: data.message || '上传失败' }
-  return data
-}
-
-export async function updateResource(id, payload) {
-  return request(`/admin/resources/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
-}
-
-export async function deleteResource(id) {
-  return request(`/admin/resources/${id}`, { method: 'DELETE' })
-}
-
 export async function getUsers(status = 'all') {
   return request(`/admin/users?status=${status}`)
 }
@@ -400,4 +321,168 @@ export async function deleteImage(url) {
   const data = await res.json()
   if (!res.ok) throw { status: res.status, message: data.message || '删除失败' }
   return data
+}
+
+// ─── Resources API (user) ───
+
+export async function getResourceTree() {
+  return userRequest('/resources/tree')
+}
+
+export async function getResourceTags() {
+  return userRequest('/resources/tags')
+}
+
+export async function getResources(params = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.parent_id) searchParams.set('parent_id', params.parent_id)
+  if (params.page) searchParams.set('page', params.page)
+  if (params.per_page) searchParams.set('per_page', params.per_page)
+  if (params.search) searchParams.set('search', params.search)
+  if (params.category) searchParams.set('category', params.category)
+  if (params.tag) searchParams.set('tag', params.tag)
+  return userRequest(`/resources?${searchParams.toString()}`)
+}
+
+export async function getResource(id) {
+  return userRequest(`/resources/${id}`)
+}
+
+export async function uploadResource(formData) {
+  const token = localStorage.getItem(USER_TOKEN_KEY)
+  const res = await fetch(`${API_BASE}/resources/upload`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  })
+  const data = await res.json()
+  if (!res.ok) throw { status: res.status, message: data.message || '上传失败' }
+  return data
+}
+
+export async function createFolder(payload) {
+  return userRequest('/resources/folder', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function downloadResource(id) {
+  return userRequest(`/resources/${id}/download`)
+}
+
+export async function batchDownloadResources(fileIds, folderIds) {
+  const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+  const token = localStorage.getItem(USER_TOKEN_KEY)
+  const res = await fetch(`${API_BASE}/resources/batch-download`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ file_ids: fileIds || [], folder_ids: folderIds || [] }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw { status: res.status, message: data.message || '下载失败' }
+  }
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename\*=UTF-8''(.+)/i)
+  const filename = match ? decodeURIComponent(match[1]) : 'resources.zip'
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function previewResource(id) {
+  return userRequest(`/resources/${id}/preview`)
+}
+
+export async function getResourceVersions(id) {
+  return userRequest(`/resources/${id}/versions`)
+}
+
+export async function restoreVersion(resourceId, versionId) {
+  return userRequest(`/resources/${resourceId}/versions/${versionId}/restore`, { method: 'POST' })
+}
+
+export async function createShareLink(id) {
+  return userRequest(`/resources/${id}/share`, { method: 'POST' })
+}
+
+export async function removeShareLink(id) {
+  return userRequest(`/resources/${id}/unshare`, { method: 'POST' })
+}
+
+export async function getComments(resourceId) {
+  return userRequest(`/resources/${resourceId}/comments`)
+}
+
+export async function addComment(resourceId, content) {
+  return userRequest(`/resources/${resourceId}/comments`, { method: 'POST', body: JSON.stringify({ content }) })
+}
+
+// ─── Resources API (admin) ───
+
+export async function getAdminResources(params = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.parent_id) searchParams.set('parent_id', params.parent_id)
+  if (params.page) searchParams.set('page', params.page)
+  if (params.per_page) searchParams.set('per_page', params.per_page)
+  if (params.search) searchParams.set('search', params.search)
+  if (params.status) searchParams.set('status', params.status)
+  if (params.category) searchParams.set('category', params.category)
+  if (params.is_folder !== undefined) searchParams.set('is_folder', params.is_folder)
+  return request(`/admin/resources?${searchParams.toString()}`)
+}
+
+export async function updateResource(id, payload) {
+  return userRequest(`/resources/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+}
+
+export async function deleteResource(id) {
+  return request(`/admin/resources/${id}`, { method: 'DELETE' })
+}
+
+export async function moveResource(id, newParentId) {
+  return request(`/admin/resources/${id}/move`, { method: 'POST', body: JSON.stringify({ new_parent_id: newParentId }) })
+}
+
+export async function updateResourceStatus(id, status) {
+  return request(`/admin/resources/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
+}
+
+export async function batchResources(payload) {
+  return request('/admin/resources/batch', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function getAdminFolders() {
+  return request('/admin/resources/folders')
+}
+
+export async function getFolders() {
+  return userRequest('/resources/folders')
+}
+
+export async function getTrash(params = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.page) searchParams.set('page', params.page)
+  if (params.per_page) searchParams.set('per_page', params.per_page)
+  return request(`/admin/resources/trash?${searchParams.toString()}`)
+}
+
+export async function restoreResource(id) {
+  return request(`/admin/resources/${id}/restore`, { method: 'POST' })
+}
+
+export async function permanentDeleteResource(id) {
+  return request(`/admin/resources/${id}/permanent`, { method: 'DELETE' })
+}
+
+export async function getResourceLogs(params = {}) {
+  const searchParams = new URLSearchParams()
+  if (params.page) searchParams.set('page', params.page)
+  if (params.per_page) searchParams.set('per_page', params.per_page)
+  return request(`/admin/resources/logs?${searchParams.toString()}`)
 }

@@ -5,7 +5,7 @@ services:
     environment:
       - FLASK_ENV=production
       - SECRET_KEY=${SECRET_KEY:-xingyu-studio-secret-2026}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-xingyu-jwt-secret-2026}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-xingyu-jwt-secret-2026-xingyu-studio}
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/xingyu_cms.db}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
       # 阿里云 OSS

@@ -83,7 +83,8 @@
           <ContactManager v-if="activeSection === 'contactMessages'" />
 
           <!-- 资源管理 -->
-          <ResourcesManager v-if="activeSection === 'resources'" />
+          <ResourceManager v-if="activeSection === 'resources'" />
+
         </div>
       </div>
     </div>
@@ -106,7 +107,8 @@ import UserManager from '@/components/admin/UserManager.vue'
 import SubmissionManager from '@/components/admin/SubmissionManager.vue'
 import ApplicationsManager from '@/components/admin/ApplicationsManager.vue'
 import ContactManager from '@/components/admin/ContactManager.vue'
-import ResourcesManager from '@/components/admin/ResourcesManager.vue'
+import ResourceManager from '@/components/admin/ResourceManager.vue'
+
 import SystemSettingsEditor from '@/components/admin/SystemSettingsEditor.vue'
 
 const isLoggedIn = ref(false)

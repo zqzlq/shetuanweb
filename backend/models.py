@@ -194,38 +194,137 @@ class Resource(db.Model):
     __tablename__ = 'resources'
 
     id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    category = db.Column(db.String(50), nullable=False)
-    file_url = db.Column(db.String(500), nullable=False)
-    file_name = db.Column(db.String(200), nullable=False)
-    file_size = db.Column(db.Integer, nullable=True)
-    file_type = db.Column(db.String(20), nullable=True)
+    name = db.Column(db.String(255), nullable=False)
+    is_folder = db.Column(db.Boolean, default=False, nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('resources.id'), nullable=True)
+    category = db.Column(db.String(50), nullable=True)
     tags = db.Column(db.JSON, nullable=True)
-    preview_content = db.Column(db.Text, nullable=True)
+    description = db.Column(db.Text, nullable=True)
+
+    # 文件专属字段（文件夹为 null）
+    file_url = db.Column(db.String(500), nullable=True)
+    oss_key = db.Column(db.String(500), nullable=True)
+    original_name = db.Column(db.String(255), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    file_ext = db.Column(db.String(20), nullable=True)
+
+    # 元数据
+    uploader_id = db.Column(db.Integer, db.ForeignKey('member_users.id'), nullable=True)
+    status = db.Column(db.String(20), default='approved')
     download_count = db.Column(db.Integer, default=0)
-    uploader_id = db.Column(db.Integer, nullable=True)
-    status = db.Column(db.String(20), default='active')
+    share_token = db.Column(db.String(64), nullable=True, unique=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
 
+    parent = db.relationship('Resource', remote_side=[id], backref='children')
+    uploader = db.relationship('MemberUser', backref='resources')
+
     def to_dict(self):
         return {
             'id': self.id,
-            'title': self.title,
-            'description': self.description,
+            'name': self.name,
+            'is_folder': self.is_folder,
+            'parent_id': self.parent_id,
             'category': self.category,
-            'file_url': self.file_url,
-            'file_name': self.file_name,
-            'file_size': self.file_size,
-            'file_type': self.file_type,
             'tags': self.tags or [],
-            'download_count': self.download_count,
+            'description': self.description,
+            'file_url': self.file_url,
+            'original_name': self.original_name,
+            'file_size': self.file_size,
+            'mime_type': self.mime_type,
+            'file_ext': self.file_ext,
             'uploader_id': self.uploader_id,
+            'uploader_name': self.uploader.name if self.uploader else None,
             'status': self.status,
+            'download_count': self.download_count,
+            'children_count': len(self.children) if self.is_folder else 0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ResourceVersion(db.Model):
+    __tablename__ = 'resource_versions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, db.ForeignKey('resources.id'), nullable=False)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    file_url = db.Column(db.String(500), nullable=False)
+    oss_key = db.Column(db.String(500), nullable=True)
+    original_name = db.Column(db.String(255), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
+    file_ext = db.Column(db.String(20), nullable=True)
+    uploader_id = db.Column(db.Integer, db.ForeignKey('member_users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    resource = db.relationship('Resource', backref='versions')
+    uploader = db.relationship('MemberUser', backref='resource_versions')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'resource_id': self.resource_id,
+            'version': self.version,
+            'file_url': self.file_url,
+            'original_name': self.original_name,
+            'file_size': self.file_size,
+            'file_ext': self.file_ext,
+            'uploader_id': self.uploader_id,
+            'uploader_name': self.uploader.name if self.uploader else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class ResourceLog(db.Model):
+    __tablename__ = 'resource_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, nullable=True)
+    resource_name = db.Column(db.String(255), nullable=False)
+    action = db.Column(db.String(20), nullable=False)  # upload, download, delete, restore, rename, move
+    detail = db.Column(db.Text, nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('member_users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship('MemberUser', backref='resource_logs')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'resource_id': self.resource_id,
+            'resource_name': self.resource_name,
+            'action': self.action,
+            'detail': self.detail,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class ResourceComment(db.Model):
+    __tablename__ = 'resource_comments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, db.ForeignKey('resources.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('member_users.id'), nullable=True)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    resource = db.relationship('Resource', backref='comments')
+    user = db.relationship('MemberUser', backref='resource_comments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'resource_id': self.resource_id,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'user_avatar': self.user.avatar if self.user else None,
+            'content': self.content,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 

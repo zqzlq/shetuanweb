@@ -92,6 +92,11 @@ const routes = [
     component: () => import('@/views/UserDashboard.vue'),
   },
   {
+    path: '/share/:token',
+    name: 'share',
+    component: () => import('@/views/ShareView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/',
   },

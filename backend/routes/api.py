@@ -1,13 +1,13 @@
 import os
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
-from flask import Blueprint, jsonify, request, current_app, send_from_directory
+from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from sqlalchemy.orm.attributes import flag_modified
 
 import oss_service
 
-from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission, ContactMessage, Resource
+from models import db, SiteConfig, Page, Application, AdminUser, MemberUser, UserSubmission, ContactMessage, Resource, ResourceVersion, ResourceLog, ResourceComment
 from defaults import DEFAULT_SITE_CONFIG, DEFAULT_PAGES
 
 api_bp = Blueprint('api', __name__)
@@ -1031,95 +1031,123 @@ def admin_reset_all():
     return jsonify({'success': True, 'message': '所有内容已重置为默认值'})
 
 
-# ─── Resources: User API ───
+# ─── Resources: Constants ───
 
-DEFAULT_RESOURCE_CATEGORIES = {
-    'literature': '文献',
-    'tutorial': '教程',
-    'tool': '工具',
-    'template': '表格模板',
-    'learning': '学习资料',
+ALLOWED_RESOURCE_EXTENSIONS = {
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'rtf',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico',
+    'zip', 'rar', '7z', 'tar', 'gz', 'bz2',
+    'py', 'js', 'ts', 'jsx', 'tsx', 'html', 'css', 'json', 'yaml', 'yml', 'xml',
+    'sql', 'sh', 'bat', 'java', 'c', 'cpp', 'go', 'rs',
+    'mp3', 'wav', 'mp4', 'webm', 'ogg',
+    'psd', 'ai', 'sketch', 'fig',
 }
+
+TEXT_PREVIEW_EXTENSIONS = {
+    'txt', 'md', 'csv', 'json', 'xml', 'yaml', 'yml',
+    'py', 'js', 'ts', 'jsx', 'tsx', 'html', 'css', 'sql', 'sh', 'bat',
+    'java', 'c', 'cpp', 'go', 'rs', 'rtf',
+}
+
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'}
+PDF_EXTENSIONS = {'pdf'}
+MARKDOWN_EXTENSIONS = {'md'}
 
 
 def _get_resource_categories():
-    """Read resource categories from SiteConfig, fallback to defaults."""
     cfg = SiteConfig.query.filter_by(config_key='resourceCategories').first()
-    if cfg and isinstance(cfg.config_value, dict) and cfg.config_value:
+    if cfg and isinstance(cfg.config_value, list) and cfg.config_value:
         return cfg.config_value
-    return DEFAULT_RESOURCE_CATEGORIES
+    return ['学习资料', '设计素材', '项目文档', '工具软件']
 
 
-ALLOWED_RESOURCE_EXTENSIONS = {
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-    'zip', 'rar', '7z', 'tar', 'gz',
-    'txt', 'md', 'csv', 'json', 'xml',
-    'png', 'jpg', 'jpeg', 'gif', 'webp',
-    'py', 'js', 'ts', 'java', 'c', 'cpp', 'go', 'rs',
-}
+def _log_action(resource_id, resource_name, action, user_id=None, detail=None):
+    """记录资源操作日志"""
+    try:
+        log = ResourceLog(
+            resource_id=resource_id,
+            resource_name=resource_name,
+            action=action,
+            user_id=user_id,
+            detail=detail,
+        )
+        db.session.add(log)
+    except Exception:
+        pass
 
-IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-TEXT_EXTENSIONS = {'txt', 'csv', 'json', 'xml', 'py', 'js', 'ts', 'java', 'c', 'cpp', 'go', 'rs'}
-MARKDOWN_EXTENSIONS = {'md'}
-PDF_EXTENSIONS = {'pdf'}
-DOCX_EXTENSIONS = {'docx'}
 
-
-def _current_user_id():
-    """Get current user ID from JWT (supports both admin and member users)."""
+def _get_current_user_id():
+    """从 JWT 获取当前用户 ID（支持普通用户和管理员）"""
     identity = get_jwt_identity()
     if isinstance(identity, str) and identity.startswith('user_'):
         return int(identity.replace('user_', ''))
     return None
 
 
-@api_bp.route('/resources/categories', methods=['GET'])
+def _require_admin():
+    """验证管理员身份，返回 AdminUser 或 None"""
+    identity = get_jwt_identity()
+    if isinstance(identity, str) and identity.startswith('user_'):
+        return None
+    try:
+        return AdminUser.query.get(int(identity))
+    except (ValueError, TypeError):
+        return None
+
+
+def _get_ancestor_chain(resource):
+    """获取面包屑祖先链"""
+    ancestors = []
+    current = resource.parent
+    while current:
+        ancestors.insert(0, {'id': current.id, 'name': current.name})
+        current = current.parent
+    return ancestors
+
+
+# ─── Resources: User API ───
+
+@api_bp.route('/resources/tree', methods=['GET'])
 @jwt_required()
-def get_resource_categories():
-    """Return current resource categories."""
-    return jsonify({'categories': _get_resource_categories()})
+def get_resource_tree():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    folders = Resource.query.filter_by(is_folder=True, status='approved', parent_id=None).order_by(Resource.name).all()
+    result = []
+    for f in folders:
+        children_count = Resource.query.filter_by(parent_id=f.id, status='approved').count()
+        result.append({
+            'id': f.id,
+            'name': f.name,
+            'description': f.description,
+            'children_count': children_count,
+            'created_at': f.created_at.isoformat() if f.created_at else None,
+        })
+    return jsonify({'folders': result})
 
 
-@api_bp.route('/resources', methods=['GET'])
+@api_bp.route('/resources/folders', methods=['GET'])
 @jwt_required()
-def get_resources():
-    category = request.args.get('category', '')
-    search = request.args.get('search', '')
-    tag = request.args.get('tag', '')
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
+def get_folders():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
 
-    query = Resource.query.filter_by(status='active')
-    categories = _get_resource_categories()
-    if category and category in categories:
-        query = query.filter_by(category=category)
-    if tag:
-        query = query.filter(Resource.tags.contains(tag))
-    if search:
-        query = query.filter(
-            db.or_(
-                Resource.title.ilike(f'%{search}%'),
-                Resource.description.ilike(f'%{search}%'),
-            )
-        )
-
-    query = query.order_by(Resource.created_at.desc())
-    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-
-    return jsonify({
-        'items': [r.to_dict() for r in pagination.items],
-        'total': pagination.total,
-        'page': pagination.page,
-        'pages': pagination.pages,
-        'categories': _get_resource_categories(),
-    })
+    folders = Resource.query.filter_by(is_folder=True, status='approved').order_by(Resource.name).all()
+    result = [{'id': f.id, 'name': f.name, 'parent_id': f.parent_id} for f in folders]
+    return jsonify({'folders': result})
 
 
 @api_bp.route('/resources/tags', methods=['GET'])
 @jwt_required()
 def get_resource_tags():
-    """Return all unique tags across active resources."""
-    resources = Resource.query.filter_by(status='active').filter(Resource.tags.isnot(None)).all()
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resources = Resource.query.filter_by(status='approved').filter(Resource.tags.isnot(None)).all()
     tag_counts = {}
     for r in resources:
         if r.tags:
@@ -1129,70 +1157,113 @@ def get_resource_tags():
     return jsonify({'tags': [{'name': t, 'count': c} for t, c in sorted_tags]})
 
 
-@api_bp.route('/resources/<int:resource_id>', methods=['GET'])
+@api_bp.route('/resources', methods=['GET'])
 @jwt_required()
-def get_resource(resource_id):
-    resource = Resource.query.get(resource_id)
-    if not resource or resource.status != 'active':
-        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
-    return jsonify(resource.to_dict())
+def get_resources():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
 
+    parent_id = request.args.get('parent_id', type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '').strip()
+    category = request.args.get('category', '').strip()
+    tag = request.args.get('tag', '').strip()
 
-@api_bp.route('/resources/<int:resource_id>/download', methods=['POST'])
-@jwt_required()
-def download_resource(resource_id):
-    resource = Resource.query.get(resource_id)
-    if not resource or resource.status != 'active':
-        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+    query = Resource.query.filter_by(status='approved')
 
-    resource.download_count += 1
-    db.session.commit()
+    # 搜索时跨所有文件夹，不搜索时按当前文件夹过滤
+    if search:
+        query = query.filter(
+            db.or_(
+                Resource.name.ilike(f'%{search}%'),
+                Resource.description.ilike(f'%{search}%'),
+                Resource.original_name.ilike(f'%{search}%'),
+            )
+        )
+    elif parent_id:
+        query = query.filter_by(parent_id=parent_id)
+    else:
+        query = query.filter_by(parent_id=None)
+
+    if category:
+        query = query.filter_by(category=category)
+    if tag:
+        query = query.filter(Resource.tags.contains(f'"{tag}"'))
+
+    # 文件夹排前面，然后按时间倒序
+    query = query.order_by(Resource.is_folder.desc(), Resource.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    # 面包屑
+    breadcrumb = []
+    if parent_id:
+        parent = Resource.query.get(parent_id)
+        if parent:
+            breadcrumb = _get_ancestor_chain(parent) + [{'id': parent.id, 'name': parent.name}]
 
     return jsonify({
-        'success': True,
-        'file_url': resource.file_url,
-        'file_name': resource.file_name,
-        'download_count': resource.download_count,
+        'items': [r.to_dict() for r in pagination.items],
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': per_page,
+        'pages': pagination.pages,
+        'breadcrumb': breadcrumb,
+        'categories': _get_resource_categories(),
     })
 
 
-@api_bp.route('/resources/contribute', methods=['POST'])
+@api_bp.route('/resources/<int:resource_id>', methods=['GET'])
 @jwt_required()
-def contribute_resource():
-    """Allow logged-in users to submit resources for review."""
+def get_resource(resource_id):
     identity = get_jwt_identity()
-    # Extract user ID
-    if isinstance(identity, str) and identity.startswith('user_'):
-        user_id = int(identity.replace('user_', ''))
-    else:
-        # Admin can also contribute
-        user_id = None
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
 
-    title = request.form.get('title', '').strip()
-    description = request.form.get('description', '').strip()
-    category = request.form.get('category', '').strip()
-    tags_raw = request.form.get('tags', '').strip()
-    tags = [t.strip() for t in tags_raw.split(',') if t.strip()] if tags_raw else []
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
 
-    if not title:
-        return jsonify({'error': 'validation', 'message': '请填写资源标题'}), 400
-    if not category or category not in _get_resource_categories():
-        return jsonify({'error': 'validation', 'message': '请选择有效的资源分类'}), 400
+    data = resource.to_dict()
+    data['breadcrumb'] = _get_ancestor_chain(resource)
+    return jsonify(data)
+
+
+@api_bp.route('/resources/upload', methods=['POST'])
+@jwt_required()
+def upload_resource():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
 
     file = request.files.get('file')
     if not file or not file.filename:
-        return jsonify({'error': 'validation', 'message': '请上传文件'}), 400
+        return jsonify({'error': 'validation', 'message': '请选择文件'}), 400
 
     ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
     if ext not in ALLOWED_RESOURCE_EXTENSIONS:
         return jsonify({'error': 'validation', 'message': f'不支持的文件类型: .{ext}'}), 400
 
+    parent_id = request.form.get('parent_id', type=int)
+    category = request.form.get('category', '').strip()
+    tags_raw = request.form.get('tags', '').strip()
+    description = request.form.get('description', '').strip()
+
+    import json
+    tags = json.loads(tags_raw) if tags_raw else []
+
     file_bytes = file.read()
     file_size = len(file_bytes)
     filename = f"{uuid4().hex}.{ext}"
+    oss_key = f"resources/{filename}"
 
-    file_url = oss_service.upload_file(f"resources/{filename}", file_bytes)
-    if not file_url:
+    oss_url = oss_service.upload_file(oss_key, file_bytes)
+    if oss_url:
+        file_url = oss_url
+        stored_oss_key = oss_key
+    else:
         upload_folder = current_app.config['UPLOAD_FOLDER']
         resource_dir = os.path.join(upload_folder, 'resources')
         os.makedirs(resource_dir, exist_ok=True)
@@ -1200,78 +1271,571 @@ def contribute_resource():
         with open(filepath, 'wb') as f:
             f.write(file_bytes)
         file_url = f'/uploads/resources/{filename}'
+        stored_oss_key = None
 
-    preview_content = None
-    if ext in TEXT_EXTENSIONS | MARKDOWN_EXTENSIONS | {'csv', 'json', 'xml'}:
+    import mimetypes
+    mime_type = mimetypes.guess_type(file.filename)[0]
+
+    # 检查同文件夹下是否有同名文件，有则创建版本记录
+    existing = Resource.query.filter_by(
+        name=file.filename, parent_id=parent_id, is_folder=False, status='approved'
+    ).first()
+
+    if existing:
+        # 保存旧版本
+        last_version = ResourceVersion.query.filter_by(resource_id=existing.id).order_by(ResourceVersion.version.desc()).first()
+        new_ver = (last_version.version + 1) if last_version else 2
+        version_record = ResourceVersion(
+            resource_id=existing.id,
+            version=new_ver - 1,
+            file_url=existing.file_url,
+            oss_key=existing.oss_key,
+            original_name=existing.original_name,
+            file_size=existing.file_size,
+            file_ext=existing.file_ext,
+            uploader_id=existing.uploader_id,
+        )
+        db.session.add(version_record)
+
+        # 更新现有资源
+        existing.file_url = file_url
+        existing.oss_key = stored_oss_key
+        existing.original_name = file.filename
+        existing.file_size = file_size
+        existing.file_ext = ext
+        existing.mime_type = mime_type
+        existing.uploader_id = user_id
+        existing.updated_at = datetime.now(timezone.utc)
+        if category:
+            existing.category = category
+        if tags:
+            existing.tags = tags
+        if description:
+            existing.description = description
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': f'文件已更新（版本 {new_ver}）', 'resource': existing.to_dict()})
+
+    resource = Resource(
+        name=file.filename,
+        is_folder=False,
+        parent_id=parent_id,
+        category=category if category else None,
+        tags=tags if tags else None,
+        description=description if description else None,
+        file_url=file_url,
+        oss_key=stored_oss_key,
+        original_name=file.filename,
+        file_size=file_size,
+        mime_type=mime_type,
+        file_ext=ext,
+        uploader_id=user_id,
+        status='approved',
+    )
+    db.session.add(resource)
+    db.session.flush()
+    _log_action(resource.id, resource.name, 'upload', user_id)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '上传成功', 'resource': resource.to_dict()}), 201
+
+
+@api_bp.route('/resources/folder', methods=['POST'])
+@jwt_required()
+def create_folder():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+
+    data = request.get_json()
+    if not data or not data.get('name', '').strip():
+        return jsonify({'error': 'validation', 'message': '请输入文件夹名称'}), 400
+
+    name = data['name'].strip()
+    parent_id = data.get('parent_id')
+    description = data.get('description', '').strip()
+
+    folder = Resource(
+        name=name,
+        is_folder=True,
+        parent_id=parent_id,
+        description=description if description else None,
+        uploader_id=user_id,
+        status='approved',
+    )
+    db.session.add(folder)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '文件夹创建成功', 'resource': folder.to_dict()}), 201
+
+
+@api_bp.route('/resources/<int:resource_id>/download', methods=['GET'])
+@jwt_required()
+def download_resource(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.is_folder or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    resource.download_count += 1
+    user_id = int(identity.replace('user_', ''))
+    _log_action(resource.id, resource.name, 'download', user_id)
+    db.session.commit()
+
+    # 读取文件并代理返回
+    file_bytes = None
+    content_type = 'application/octet-stream'
+    if resource.file_url.startswith('/uploads/'):
+        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], resource.file_url.replace('/uploads/', ''))
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as f:
+                file_bytes = f.read()
+    else:
+        import urllib.request as urlreq
         try:
-            preview_content = file_bytes.decode('utf-8', errors='replace')[:50000]
+            with urlreq.urlopen(resource.file_url, timeout=30) as resp:
+                file_bytes = resp.read()
+                ct = resp.headers.get('Content-Type', '')
+                if ct: content_type = ct
         except Exception:
             pass
 
-    resource = Resource(
-        title=title,
-        description=description,
-        category=category,
-        file_url=file_url,
-        file_name=file.filename,
-        file_size=file_size,
-        file_type=ext,
-        tags=tags,
-        preview_content=preview_content,
-        uploader_id=user_id,
-        status='pending',
+    if not file_bytes:
+        return jsonify({'error': 'fetch_failed', 'message': '无法获取文件'}), 500
+
+    from flask import Response
+    from urllib.parse import quote
+    # 使用当前显示名称，如果没有扩展名则从原始名补上
+    display = (resource.name or resource.original_name).strip()
+    if resource.file_ext and not display.lower().endswith('.' + resource.file_ext.lower()):
+        fname = display + '.' + resource.file_ext
+    else:
+        fname = display
+    return Response(
+        file_bytes,
+        content_type=content_type,
+        headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(fname)}",
+            'Content-Length': str(len(file_bytes)),
+        }
     )
-    db.session.add(resource)
+
+
+@api_bp.route('/resources/batch-download', methods=['POST'])
+@jwt_required()
+def batch_download_resources():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    data = request.get_json()
+    file_ids = data.get('file_ids', [])
+    folder_ids = data.get('folder_ids', [])
+    if not file_ids and not folder_ids:
+        return jsonify({'error': 'validation', 'message': '请选择文件'}), 400
+
+    # 收集直接选中的文件
+    files_to_zip = []
+    if file_ids:
+        direct_files = Resource.query.filter(
+            Resource.id.in_(file_ids),
+            Resource.is_folder == False,
+            Resource.status == 'approved',
+        ).all()
+        files_to_zip.extend([(f, '') for f in direct_files])
+
+    # 递归收集文件夹内的文件
+    def collect_folder_files(folder_id, prefix=''):
+        children = Resource.query.filter_by(parent_id=folder_id, status='approved').all()
+        for child in children:
+            if child.is_folder:
+                collect_folder_files(child.id, prefix + child.name + '/')
+            else:
+                files_to_zip.append((child, prefix))
+
+    for fid in folder_ids:
+        folder = Resource.query.get(fid)
+        if folder and folder.is_folder:
+            collect_folder_files(folder.id, folder.name + '/')
+
+    if not files_to_zip:
+        return jsonify({'error': 'not_found', 'message': '没有可下载的文件'}), 404
+
+    import zipfile
+    import io
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        name_counts = {}
+        for r, prefix in files_to_zip:
+            fname = prefix + (r.original_name or r.name)
+            if fname in name_counts:
+                name_counts[fname] += 1
+                base, ext = os.path.splitext(fname)
+                fname = f"{base}_{name_counts[fname]}{ext}"
+            else:
+                name_counts[fname] = 0
+
+            file_bytes = None
+            if r.file_url.startswith('/uploads/'):
+                filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], r.file_url.replace('/uploads/', ''))
+                if os.path.exists(filepath):
+                    with open(filepath, 'rb') as f:
+                        file_bytes = f.read()
+            else:
+                try:
+                    import urllib.request as urlreq
+                    with urlreq.urlopen(r.file_url, timeout=30) as resp:
+                        file_bytes = resp.read()
+                except Exception:
+                    pass
+
+            if file_bytes:
+                zf.writestr(fname, file_bytes)
+                r.download_count += 1
+
     db.session.commit()
 
-    return jsonify({'success': True, 'message': '资源已提交，等待管理员审核', 'resource': resource.to_dict()})
+    zip_buffer.seek(0)
+    from flask import Response
+    from urllib.parse import quote
+    zip_name = f"resources_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.zip"
+    encoded_name = quote(zip_name)
+
+    return Response(
+        zip_buffer.getvalue(),
+        content_type='application/zip',
+        headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{encoded_name}",
+        }
+    )
 
 
-@api_bp.route('/resources/my-contributions', methods=['GET'])
+@api_bp.route('/resources/<int:resource_id>/versions', methods=['GET'])
 @jwt_required()
-def get_my_contributions():
-    """Get resources contributed by the current user."""
+def get_resource_versions(resource_id):
     identity = get_jwt_identity()
-    if isinstance(identity, str) and identity.startswith('user_'):
-        user_id = int(identity.replace('user_', ''))
-    else:
-        return jsonify({'items': []})
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
 
-    resources = Resource.query.filter_by(uploader_id=user_id).order_by(Resource.created_at.desc()).all()
-    return jsonify({'items': [r.to_dict() for r in resources]})
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    versions = ResourceVersion.query.filter_by(resource_id=resource_id).order_by(ResourceVersion.version.desc()).all()
+    return jsonify({
+        'current': resource.to_dict(),
+        'versions': [v.to_dict() for v in versions],
+    })
+
+
+@api_bp.route('/resources/<int:resource_id>/versions/<int:version_id>/restore', methods=['POST'])
+@jwt_required()
+def restore_version(resource_id, version_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    version = ResourceVersion.query.get(version_id)
+    if not resource or not version or version.resource_id != resource_id:
+        return jsonify({'error': 'not_found', 'message': '版本不存在'}), 404
+
+    # 保存当前版本
+    last_version = ResourceVersion.query.filter_by(resource_id=resource_id).order_by(ResourceVersion.version.desc()).first()
+    new_ver = (last_version.version + 1) if last_version else 2
+    current_version = ResourceVersion(
+        resource_id=resource_id,
+        version=new_ver,
+        file_url=resource.file_url,
+        oss_key=resource.oss_key,
+        original_name=resource.original_name,
+        file_size=resource.file_size,
+        file_ext=resource.file_ext,
+        uploader_id=resource.uploader_id,
+    )
+    db.session.add(current_version)
+
+    # 恢复选中的版本
+    resource.file_url = version.file_url
+    resource.oss_key = version.oss_key
+    resource.original_name = version.original_name
+    resource.file_size = version.file_size
+    resource.file_ext = version.file_ext
+    resource.uploader_id = int(identity.replace('user_', ''))
+    resource.updated_at = datetime.now(timezone.utc)
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'已恢复到版本 {version.version}', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/resources/<int:resource_id>', methods=['PATCH'])
+@jwt_required()
+def update_resource(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    data = request.get_json()
+    if 'name' in data:
+        resource.name = data['name'].strip()
+    if 'category' in data:
+        resource.category = data['category'] if data['category'] else None
+    if 'tags' in data:
+        resource.tags = data['tags'] if isinstance(data['tags'], list) else []
+    if 'description' in data:
+        resource.description = data['description'] if data['description'] else None
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': '已更新', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/resources/<int:resource_id>/share', methods=['POST'])
+@jwt_required()
+def create_share_link(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    if not resource.share_token:
+        resource.share_token = uuid4().hex
+        db.session.commit()
+
+    return jsonify({'success': True, 'token': resource.share_token, 'is_folder': resource.is_folder})
+
+
+@api_bp.route('/resources/<int:resource_id>/unshare', methods=['POST'])
+@jwt_required()
+def remove_share_link(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    resource.share_token = None
+    db.session.commit()
+    return jsonify({'success': True, 'message': '已取消分享'})
+
+
+@api_bp.route('/share/<token>', methods=['GET'])
+def get_shared_resource(token):
+    resource = Resource.query.filter_by(share_token=token, status='approved').first()
+    if not resource:
+        return jsonify({'error': 'not_found', 'message': '分享链接无效或已过期'}), 404
+
+    data = {
+        'id': resource.id,
+        'name': resource.original_name or resource.name,
+        'is_folder': resource.is_folder,
+        'file_size': resource.file_size,
+        'file_ext': resource.file_ext,
+        'file_url': resource.file_url,
+        'description': resource.description,
+        'created_at': resource.created_at.isoformat() if resource.created_at else None,
+    }
+
+    # 文件夹：列出子内容
+    if resource.is_folder:
+        children = Resource.query.filter_by(parent_id=resource.id, status='approved').order_by(Resource.is_folder.desc(), Resource.created_at.desc()).all()
+        data['children'] = [{
+            'id': c.id,
+            'name': c.original_name or c.name,
+            'is_folder': c.is_folder,
+            'file_size': c.file_size,
+            'file_ext': c.file_ext,
+            'file_url': c.file_url,
+        } for c in children]
+
+    return jsonify(data)
+
+
+@api_bp.route('/share/<int:folder_id>/items', methods=['GET'])
+def get_shared_folder_items(folder_id):
+    token = request.args.get('token', '')
+
+    # 验证 token 对应的共享资源
+    shared = Resource.query.filter_by(share_token=token, status='approved').first()
+    if not shared:
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    # 验证目标文件夹在共享范围内
+    if shared.is_folder:
+        # 检查 folder_id 是否是 shared 本身或其子孙
+        current = Resource.query.get(folder_id)
+        if not current or not current.is_folder:
+            return jsonify({'error': 'not_found', 'message': '文件夹不存在'}), 404
+        valid = (current.id == shared.id)
+        if not valid:
+            parent = current.parent
+            while parent:
+                if parent.id == shared.id:
+                    valid = True
+                    break
+                parent = parent.parent
+        if not valid:
+            return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    else:
+        # 共享的是文件，不支持子项浏览
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    children = Resource.query.filter_by(parent_id=folder_id, status='approved').order_by(Resource.is_folder.desc(), Resource.created_at.desc()).all()
+    return jsonify({
+        'name': current.original_name or current.name,
+        'items': [{
+            'id': c.id,
+            'name': c.original_name or c.name,
+            'is_folder': c.is_folder,
+            'file_size': c.file_size,
+            'file_ext': c.file_ext,
+            'file_url': c.file_url,
+            'description': c.description,
+            'share_token': c.share_token,
+            'created_at': c.created_at.isoformat() if c.created_at else None,
+        } for c in children]
+    })
+
+
+@api_bp.route('/resources/<int:resource_id>/comments', methods=['GET'])
+@jwt_required()
+def get_comments(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    comments = ResourceComment.query.filter_by(resource_id=resource_id).order_by(ResourceComment.created_at.desc()).all()
+    return jsonify({'comments': [c.to_dict() for c in comments]})
+
+
+@api_bp.route('/resources/<int:resource_id>/comments', methods=['POST'])
+@jwt_required()
+def add_comment(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+    user_id = int(identity.replace('user_', ''))
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    data = request.get_json()
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': 'validation', 'message': '评论内容不能为空'}), 400
+
+    comment = ResourceComment(
+        resource_id=resource_id,
+        user_id=user_id,
+        content=content,
+    )
+    db.session.add(comment)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '评论成功', 'comment': comment.to_dict()}), 201
+
+
+@api_bp.route('/resources/<int:resource_id>/file', methods=['GET'])
+@jwt_required()
+def proxy_resource_file(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.is_folder or resource.status != 'approved':
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    file_bytes = None
+    content_type = 'application/octet-stream'
+    if resource.file_url.startswith('/uploads/'):
+        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], resource.file_url.replace('/uploads/', ''))
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as f:
+                file_bytes = f.read()
+    else:
+        import urllib.request as urlreq
+        try:
+            with urlreq.urlopen(resource.file_url, timeout=30) as resp:
+                file_bytes = resp.read()
+                ct = resp.headers.get('Content-Type', '')
+                if ct: content_type = ct
+        except Exception:
+            pass
+
+    if not file_bytes:
+        return jsonify({'error': 'fetch_failed', 'message': '无法获取文件'}), 500
+
+    from flask import Response
+    from urllib.parse import quote
+    return Response(file_bytes, content_type=content_type, headers={'Access-Control-Allow-Origin': '*'})
 
 
 @api_bp.route('/resources/<int:resource_id>/preview', methods=['GET'])
 @jwt_required()
 def preview_resource(resource_id):
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
     resource = Resource.query.get(resource_id)
-    if not resource or resource.status != 'active':
+    if not resource or resource.is_folder or resource.status != 'approved':
         return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
 
-    ext = (resource.file_type or '').lower()
+    ext = (resource.file_ext or '').lower()
 
     if ext in IMAGE_EXTENSIONS:
         return jsonify({'type': 'image', 'url': resource.file_url})
 
     if ext in PDF_EXTENSIONS:
-        return jsonify({'type': 'pdf', 'url': resource.file_url})
+        return jsonify({'type': 'pdf', 'url': f'/api/resources/{resource_id}/file'})
 
     if ext in MARKDOWN_EXTENSIONS:
-        if resource.preview_content:
-            return jsonify({'type': 'markdown', 'content': resource.preview_content})
-        return jsonify({'type': 'markdown', 'content': '', 'url': resource.file_url})
+        content = _read_text_content(resource)
+        return jsonify({'type': 'markdown', 'content': content or ''})
 
-    if ext in DOCX_EXTENSIONS:
-        if resource.preview_content:
-            return jsonify({'type': 'html', 'content': resource.preview_content})
-        return jsonify({'type': 'html', 'content': '', 'url': resource.file_url})
+    if ext in TEXT_PREVIEW_EXTENSIONS:
+        content = _read_text_content(resource)
+        return jsonify({'type': 'text', 'content': content or '', 'language': ext})
 
-    if ext in TEXT_EXTENSIONS:
-        if resource.preview_content:
-            return jsonify({'type': 'text', 'content': resource.preview_content, 'language': ext})
-        return jsonify({'type': 'text', 'content': '', 'url': resource.file_url, 'language': ext})
+    return jsonify({'type': 'unsupported', 'file_type': ext, 'file_name': resource.original_name})
 
-    return jsonify({'type': 'unsupported', 'file_type': ext})
+
+def _read_text_content(resource):
+    """读取文本文件内容（限 128MB）"""
+    if not resource.file_size or resource.file_size > 128 * 1024 * 1024:
+        return None
+    try:
+        if resource.file_url.startswith('/uploads/'):
+            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], resource.file_url.replace('/uploads/', ''))
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+                    return f.read()[:500000]
+        else:
+            import urllib.request as urlreq
+            with urlreq.urlopen(resource.file_url, timeout=15) as resp:
+                return resp.read().decode('utf-8', errors='replace')[:500000]
+    except Exception:
+        pass
+    return None
 
 
 # ─── Resources: Admin API ───
@@ -1279,111 +1843,72 @@ def preview_resource(resource_id):
 @api_bp.route('/admin/resources', methods=['GET'])
 @jwt_required()
 def admin_get_resources():
-    category = request.args.get('category', '')
-    search = request.args.get('search', '')
-    status = request.args.get('status', 'all')
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '').strip()
+    status = request.args.get('status', '').strip()
+    category = request.args.get('category', '').strip()
+    is_folder = request.args.get('is_folder', '')
+    parent_id = request.args.get('parent_id', type=int)
 
     query = Resource.query
-    categories = _get_resource_categories()
-    if category and category in categories:
-        query = query.filter_by(category=category)
-    if status and status != 'all':
-        query = query.filter_by(status=status)
-    if search:
-        query = query.filter(
-            db.or_(
-                Resource.title.ilike(f'%{search}%'),
-                Resource.description.ilike(f'%{search}%'),
-                Resource.file_name.ilike(f'%{search}%'),
-            )
-        )
 
-    query = query.order_by(Resource.created_at.desc())
+    # 默认排除已删除的资源
+    if status:
+        query = query.filter_by(status=status)
+    else:
+        query = query.filter(Resource.status != 'deleted')
+
+    if parent_id is not None:
+        query = query.filter_by(parent_id=parent_id)
+    else:
+        query = query.filter_by(parent_id=None)
+    if search:
+        query = query.filter(Resource.name.ilike(f'%{search}%'))
+    if category:
+        query = query.filter_by(category=category)
+    if is_folder == 'true':
+        query = query.filter_by(is_folder=True)
+    elif is_folder == 'false':
+        query = query.filter_by(is_folder=False)
+
+    query = query.order_by(Resource.is_folder.desc(), Resource.created_at.desc())
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    # 状态计数
+    counts = {
+        'all': Resource.query.count(),
+        'approved': Resource.query.filter_by(status='approved').count(),
+        'pending': Resource.query.filter_by(status='pending').count(),
+        'rejected': Resource.query.filter_by(status='rejected').count(),
+    }
+
+    breadcrumb = []
+    if parent_id:
+        parent = Resource.query.get(parent_id)
+        if parent:
+            breadcrumb = _get_ancestor_chain(parent) + [{'id': parent.id, 'name': parent.name}]
 
     return jsonify({
         'items': [r.to_dict() for r in pagination.items],
         'total': pagination.total,
         'page': pagination.page,
+        'per_page': per_page,
         'pages': pagination.pages,
+        'counts': counts,
+        'breadcrumb': breadcrumb,
         'categories': _get_resource_categories(),
     })
 
 
-@api_bp.route('/admin/resources', methods=['POST'])
-@jwt_required()
-def admin_create_resource():
-    admin = AdminUser.query.get(int(get_jwt_identity()))
-    if not admin:
-        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
-
-    title = request.form.get('title', '').strip()
-    description = request.form.get('description', '').strip()
-    category = request.form.get('category', '').strip()
-    tags_raw = request.form.get('tags', '').strip()
-    tags = [t.strip() for t in tags_raw.split(',') if t.strip()] if tags_raw else []
-
-    if not title:
-        return jsonify({'error': 'validation', 'message': '请填写资源标题'}), 400
-    if not category or category not in _get_resource_categories():
-        return jsonify({'error': 'validation', 'message': '请选择有效的资源分类'}), 400
-
-    file = request.files.get('file')
-    if not file or not file.filename:
-        return jsonify({'error': 'validation', 'message': '请上传文件'}), 400
-
-    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
-    if ext not in ALLOWED_RESOURCE_EXTENSIONS:
-        return jsonify({'error': 'validation', 'message': f'不支持的文件类型: .{ext}'}), 400
-
-    file_bytes = file.read()
-    file_size = len(file_bytes)
-    filename = f"{uuid4().hex}.{ext}"
-
-    # Try OSS upload first
-    file_url = oss_service.upload_file(f"resources/{filename}", file_bytes)
-    if not file_url:
-        # Fallback to local storage
-        upload_folder = current_app.config['UPLOAD_FOLDER']
-        resource_dir = os.path.join(upload_folder, 'resources')
-        os.makedirs(resource_dir, exist_ok=True)
-        filepath = os.path.join(resource_dir, filename)
-        with open(filepath, 'wb') as f:
-            f.write(file_bytes)
-        file_url = f'/uploads/resources/{filename}'
-
-    # Extract preview content for text-based files
-    preview_content = None
-    if ext in TEXT_EXTENSIONS | MARKDOWN_EXTENSIONS | {'csv', 'json', 'xml'}:
-        try:
-            preview_content = file_bytes.decode('utf-8', errors='replace')[:50000]
-        except Exception:
-            pass
-
-    resource = Resource(
-        title=title,
-        description=description,
-        category=category,
-        file_url=file_url,
-        file_name=file.filename,
-        file_size=file_size,
-        file_type=ext,
-        tags=tags,
-        preview_content=preview_content,
-        uploader_id=admin.id,
-    )
-    db.session.add(resource)
-    db.session.commit()
-
-    return jsonify({'success': True, 'message': '资源上传成功', 'resource': resource.to_dict()})
-
-
-@api_bp.route('/admin/resources/<int:resource_id>', methods=['PUT'])
+@api_bp.route('/admin/resources/<int:resource_id>', methods=['PATCH'])
 @jwt_required()
 def admin_update_resource(resource_id):
-    admin = AdminUser.query.get(int(get_jwt_identity()))
+    admin = _require_admin()
     if not admin:
         return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
 
@@ -1392,16 +1917,18 @@ def admin_update_resource(resource_id):
         return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
 
     data = request.get_json()
-    if 'title' in data:
-        resource.title = data['title'].strip()
-    if 'description' in data:
-        resource.description = data['description'].strip()
-    if 'category' in data and data['category'] in _get_resource_categories():
-        resource.category = data['category']
+    if 'name' in data:
+        old_name = resource.name
+        new_name = data['name'].strip()
+        if new_name != old_name:
+            _log_action(resource.id, old_name, 'rename', admin.id, f'→ {new_name}')
+        resource.name = new_name
+    if 'category' in data:
+        resource.category = data['category'] if data['category'] else None
     if 'tags' in data:
         resource.tags = data['tags'] if isinstance(data['tags'], list) else []
-    if 'status' in data:
-        resource.status = data['status']
+    if 'description' in data:
+        resource.description = data['description'] if data['description'] else None
 
     db.session.commit()
     return jsonify({'success': True, 'message': '资源已更新', 'resource': resource.to_dict()})
@@ -1410,7 +1937,7 @@ def admin_update_resource(resource_id):
 @api_bp.route('/admin/resources/<int:resource_id>', methods=['DELETE'])
 @jwt_required()
 def admin_delete_resource(resource_id):
-    admin = AdminUser.query.get(int(get_jwt_identity()))
+    admin = _require_admin()
     if not admin:
         return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
 
@@ -1418,15 +1945,121 @@ def admin_delete_resource(resource_id):
     if not resource:
         return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
 
-    # Try to delete file from OSS
-    if resource.file_url and 'oss' in resource.file_url:
+    # 软删除：标记为 deleted
+    resource.status = 'deleted'
+    resource.deleted_at = datetime.now(timezone.utc)
+
+    # 如果是文件夹，递归软删除子项
+    if resource.is_folder:
+        _soft_delete_children(resource.id)
+
+    _log_action(resource.id, resource.name, 'delete', admin.id)
+    db.session.commit()
+    return jsonify({'success': True, 'message': '已移入回收站'})
+
+
+def _soft_delete_children(parent_id):
+    children = Resource.query.filter_by(parent_id=parent_id).all()
+    for child in children:
+        child.status = 'deleted'
+        child.deleted_at = datetime.now(timezone.utc)
+        if child.is_folder:
+            _soft_delete_children(child.id)
+
+
+@api_bp.route('/admin/resources/trash', methods=['GET'])
+@jwt_required()
+def admin_get_trash():
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+
+    query = Resource.query.filter_by(status='deleted').order_by(Resource.deleted_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'items': [r.to_dict() for r in pagination.items],
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': per_page,
+        'pages': pagination.pages,
+    })
+
+
+@api_bp.route('/admin/resources/logs', methods=['GET'])
+@jwt_required()
+def admin_get_logs():
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+
+    query = ResourceLog.query.order_by(ResourceLog.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    return jsonify({
+        'items': [l.to_dict() for l in pagination.items],
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': per_page,
+        'pages': pagination.pages,
+    })
+
+
+@api_bp.route('/admin/resources/<int:resource_id>/restore', methods=['POST'])
+@jwt_required()
+def admin_restore_resource(resource_id):
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'deleted':
+        return jsonify({'error': 'not_found', 'message': '资源不在回收站'}), 404
+
+    resource.status = 'approved'
+    resource.deleted_at = None
+
+    # 如果是文件夹，递归恢复子项
+    if resource.is_folder:
+        _restore_children(resource.id)
+
+    _log_action(resource.id, resource.name, 'restore', admin.id)
+    db.session.commit()
+    return jsonify({'success': True, 'message': '已恢复'})
+
+
+def _restore_children(parent_id):
+    children = Resource.query.filter_by(parent_id=parent_id, status='deleted').all()
+    for child in children:
+        child.status = 'approved'
+        child.deleted_at = None
+        if child.is_folder:
+            _restore_children(child.id)
+
+
+@api_bp.route('/admin/resources/<int:resource_id>/permanent', methods=['DELETE'])
+@jwt_required()
+def admin_permanent_delete(resource_id):
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource or resource.status != 'deleted':
+        return jsonify({'error': 'not_found', 'message': '资源不在回收站'}), 404
+
+    # 删除实际文件
+    if resource.oss_key:
         try:
-            parts = resource.file_url.split('/')
-            key = '/'.join(parts[3:])  # Remove https://bucket.endpoint/
-            oss_service.delete_file(key)
+            oss_service.delete_file(resource.oss_key)
         except Exception:
             pass
-    # Try to delete local file
     elif resource.file_url and resource.file_url.startswith('/uploads/'):
         try:
             local_path = os.path.join(current_app.config['UPLOAD_FOLDER'], resource.file_url.replace('/uploads/', ''))
@@ -1435,6 +2068,147 @@ def admin_delete_resource(resource_id):
         except Exception:
             pass
 
+    # 递归永久删除子项
+    if resource.is_folder:
+        _permanent_delete_children(resource.id)
+
     db.session.delete(resource)
     db.session.commit()
-    return jsonify({'success': True, 'message': '资源已删除'})
+    return jsonify({'success': True, 'message': '已永久删除'})
+
+
+def _permanent_delete_children(parent_id):
+    children = Resource.query.filter_by(parent_id=parent_id).all()
+    for child in children:
+        if child.oss_key:
+            try:
+                oss_service.delete_file(child.oss_key)
+            except Exception:
+                pass
+        elif child.file_url and child.file_url.startswith('/uploads/'):
+            try:
+                local_path = os.path.join(current_app.config['UPLOAD_FOLDER'], child.file_url.replace('/uploads/', ''))
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+            except Exception:
+                pass
+        if child.is_folder:
+            _permanent_delete_children(child.id)
+        db.session.delete(child)
+
+
+@api_bp.route('/admin/resources/folders', methods=['GET'])
+@jwt_required()
+def admin_get_folders():
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    folders = Resource.query.filter_by(is_folder=True).order_by(Resource.name).all()
+    result = [{'id': f.id, 'name': f.name, 'parent_id': f.parent_id} for f in folders]
+    return jsonify({'folders': result})
+
+
+@api_bp.route('/admin/resources/<int:resource_id>/move', methods=['POST'])
+@jwt_required()
+def admin_move_resource(resource_id):
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    data = request.get_json()
+    new_parent_id = data.get('new_parent_id')
+
+    # 不能移动到自身
+    if new_parent_id == resource_id:
+        return jsonify({'error': 'validation', 'message': '不能移动到自身'}), 400
+
+    # 验证目标文件夹存在且是文件夹
+    if new_parent_id:
+        target = Resource.query.get(new_parent_id)
+        if not target or not target.is_folder:
+            return jsonify({'error': 'validation', 'message': '目标文件夹不存在'}), 400
+
+    old_parent = resource.parent_id
+    resource.parent_id = new_parent_id if new_parent_id else None
+    _log_action(resource.id, resource.name, 'move', admin.id, f'从 {old_parent} → {new_parent_id}')
+    db.session.commit()
+    return jsonify({'success': True, 'message': '移动成功', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/admin/resources/<int:resource_id>/status', methods=['PATCH'])
+@jwt_required()
+def admin_update_resource_status(resource_id):
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    resource = Resource.query.get(resource_id)
+    if not resource:
+        return jsonify({'error': 'not_found', 'message': '资源不存在'}), 404
+
+    data = request.get_json()
+    new_status = data.get('status')
+    if new_status not in ('approved', 'pending', 'rejected'):
+        return jsonify({'error': 'validation', 'message': '无效的状态值'}), 400
+
+    resource.status = new_status
+    db.session.commit()
+    return jsonify({'success': True, 'message': '状态已更新', 'resource': resource.to_dict()})
+
+
+@api_bp.route('/admin/resources/batch', methods=['POST'])
+@jwt_required()
+def admin_batch_resources():
+    admin = _require_admin()
+    if not admin:
+        return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
+
+    data = request.get_json()
+    ids = data.get('ids', [])
+    action = data.get('action')
+    new_parent_id = data.get('new_parent_id')
+
+    if not ids or not action:
+        return jsonify({'error': 'validation', 'message': '缺少 ids 或 action'}), 400
+
+    updated = 0
+    for rid in ids:
+        resource = Resource.query.get(rid)
+        if not resource:
+            continue
+
+        if action == 'delete':
+            if resource.is_folder and Resource.query.filter_by(parent_id=resource.id).count() > 0:
+                continue
+            if resource.oss_key:
+                try:
+                    oss_service.delete_file(resource.oss_key)
+                except Exception:
+                    pass
+            elif resource.file_url and resource.file_url.startswith('/uploads/'):
+                try:
+                    local_path = os.path.join(current_app.config['UPLOAD_FOLDER'], resource.file_url.replace('/uploads/', ''))
+                    if os.path.exists(local_path):
+                        os.remove(local_path)
+                except Exception:
+                    pass
+            db.session.delete(resource)
+            updated += 1
+        elif action == 'approve':
+            resource.status = 'approved'
+            updated += 1
+        elif action == 'reject':
+            resource.status = 'rejected'
+            updated += 1
+        elif action == 'move' and new_parent_id is not None:
+            if rid != new_parent_id:
+                resource.parent_id = new_parent_id if new_parent_id else None
+                updated += 1
+
+    db.session.commit()
+    return jsonify({'success': True, 'message': f'已处理 {updated} 项', 'updated': updated})

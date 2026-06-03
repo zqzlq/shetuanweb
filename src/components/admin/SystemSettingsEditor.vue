@@ -55,6 +55,7 @@
         <label class="field full"><span>站点图标 URL</span><input :value="modelValue?.siteIcon || ''" @input="update('siteIcon', $event.target.value)" /></label>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -70,7 +71,9 @@ function update(key, value) {
 <style scoped>
 .page-editor { display: flex; flex-direction: column; gap: 20px; }
 .editor-card { background: var(--bg-soft); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 20px; }
-.editor-title { font-family: var(--font-heading); font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.editor-title { font-family: var(--font-heading); font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+.editor-hint { font-size: 12px; color: var(--text-muted); margin: 0 0 14px; }
+.save-tip { font-size: 12px; color: #2e7d32; margin: 10px 0 0; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field.full { grid-column: 1 / -1; }
 .field span { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 3px; }
