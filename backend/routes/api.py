@@ -1054,11 +1054,6 @@ PDF_EXTENSIONS = {'pdf'}
 MARKDOWN_EXTENSIONS = {'md'}
 
 
-def _get_resource_categories():
-    cfg = SiteConfig.query.filter_by(config_key='resourceCategories').first()
-    if cfg and isinstance(cfg.config_value, list) and cfg.config_value:
-        return cfg.config_value
-    return ['学习资料', '设计素材', '项目文档', '工具软件']
 
 
 def _log_action(resource_id, resource_name, action, user_id=None, detail=None):
@@ -1195,7 +1190,6 @@ def get_resources():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     search = request.args.get('search', '').strip()
-    category = request.args.get('category', '').strip()
     tag = request.args.get('tag', '').strip()
 
     query = Resource.query.filter_by(status='approved')
@@ -1214,8 +1208,6 @@ def get_resources():
     else:
         query = query.filter_by(parent_id=None)
 
-    if category:
-        query = query.filter_by(category=category)
     if tag:
         query = query.filter(Resource.tags.contains(f'"{tag}"'))
 
@@ -1230,14 +1222,20 @@ def get_resources():
         if parent:
             breadcrumb = _get_ancestor_chain(parent) + [{'id': parent.id, 'name': parent.name}]
 
+    items = [r.to_dict() for r in pagination.items]
+
+    # 搜索时为每个结果附加文件夹路径
+    if search:
+        for item, resource in zip(items, pagination.items):
+            item['folder_path'] = '/'.join(a['name'] for a in _get_ancestor_chain(resource)) if resource.parent_id else ''
+
     return jsonify({
-        'items': [r.to_dict() for r in pagination.items],
+        'items': items,
         'total': pagination.total,
         'page': pagination.page,
         'per_page': per_page,
         'pages': pagination.pages,
         'breadcrumb': breadcrumb,
-        'categories': _get_resource_categories(),
     })
 
 
@@ -1274,7 +1272,6 @@ def upload_resource():
         return jsonify({'error': 'validation', 'message': f'不支持的文件类型: .{ext}'}), 400
 
     parent_id = request.form.get('parent_id', type=int)
-    category = request.form.get('category', '').strip()
     tags_raw = request.form.get('tags', '').strip()
     description = request.form.get('description', '').strip()
 
@@ -1333,8 +1330,6 @@ def upload_resource():
         existing.mime_type = mime_type
         existing.uploader_id = user_id
         existing.updated_at = datetime.now(timezone.utc)
-        if category:
-            existing.category = category
         if tags:
             existing.tags = tags
         if description:
@@ -1347,7 +1342,6 @@ def upload_resource():
         name=file.filename,
         is_folder=False,
         parent_id=parent_id,
-        category=category if category else None,
         tags=tags if tags else None,
         description=description if description else None,
         file_url=file_url,
@@ -1614,8 +1608,6 @@ def update_resource(resource_id):
     data = request.get_json()
     if 'name' in data:
         resource.name = data['name'].strip()
-    if 'category' in data:
-        resource.category = data['category'] if data['category'] else None
     if 'tags' in data:
         resource.tags = data['tags'] if isinstance(data['tags'], list) else []
     if 'description' in data:
@@ -1878,7 +1870,6 @@ def admin_get_resources():
     per_page = request.args.get('per_page', 20, type=int)
     search = request.args.get('search', '').strip()
     status = request.args.get('status', '').strip()
-    category = request.args.get('category', '').strip()
     is_folder = request.args.get('is_folder', '')
     parent_id = request.args.get('parent_id', type=int)
 
@@ -1890,14 +1881,13 @@ def admin_get_resources():
     else:
         query = query.filter(Resource.status != 'deleted')
 
-    if parent_id is not None:
+    # 有搜索关键词时，搜索所有文件夹；否则按 parent_id 过滤
+    if search:
+        query = query.filter(Resource.name.ilike(f'%{search}%'))
+    elif parent_id is not None:
         query = query.filter_by(parent_id=parent_id)
     else:
         query = query.filter_by(parent_id=None)
-    if search:
-        query = query.filter(Resource.name.ilike(f'%{search}%'))
-    if category:
-        query = query.filter_by(category=category)
     if is_folder == 'true':
         query = query.filter_by(is_folder=True)
     elif is_folder == 'false':
@@ -1912,6 +1902,7 @@ def admin_get_resources():
         'approved': Resource.query.filter_by(status='approved').count(),
         'pending': Resource.query.filter_by(status='pending').count(),
         'rejected': Resource.query.filter_by(status='rejected').count(),
+        'deleted': Resource.query.filter_by(status='deleted').count(),
     }
 
     breadcrumb = []
@@ -1920,15 +1911,21 @@ def admin_get_resources():
         if parent:
             breadcrumb = _get_ancestor_chain(parent) + [{'id': parent.id, 'name': parent.name}]
 
+    items = [r.to_dict() for r in pagination.items]
+
+    # 搜索时为每个结果附加文件夹路径
+    if search:
+        for item, resource in zip(items, pagination.items):
+            item['folder_path'] = '/'.join(a['name'] for a in _get_ancestor_chain(resource)) if resource.parent_id else ''
+
     return jsonify({
-        'items': [r.to_dict() for r in pagination.items],
+        'items': items,
         'total': pagination.total,
         'page': pagination.page,
         'per_page': per_page,
         'pages': pagination.pages,
         'counts': counts,
         'breadcrumb': breadcrumb,
-        'categories': _get_resource_categories(),
     })
 
 
@@ -1950,8 +1947,6 @@ def admin_update_resource(resource_id):
         if new_name != old_name:
             _log_action(resource.id, old_name, 'rename', admin.id, f'→ {new_name}')
         resource.name = new_name
-    if 'category' in data:
-        resource.category = data['category'] if data['category'] else None
     if 'tags' in data:
         resource.tags = data['tags'] if isinstance(data['tags'], list) else []
     if 'description' in data:
@@ -2132,7 +2127,20 @@ def admin_get_folders():
         return jsonify({'error': 'unauthorized', 'message': '需要管理员权限'}), 403
 
     folders = Resource.query.filter_by(is_folder=True).order_by(Resource.name).all()
-    result = [{'id': f.id, 'name': f.name, 'parent_id': f.parent_id} for f in folders]
+
+    # 构建 id→folder 映射，用于快速查找祖先路径
+    folder_map = {f.id: f for f in folders}
+
+    def build_path(fid):
+        """构建文件夹完整路径，如 '根目录 / 子文件夹 / 深层文件夹'"""
+        parts = []
+        current = folder_map.get(fid)
+        while current:
+            parts.insert(0, current.name)
+            current = folder_map.get(current.parent_id)
+        return ' / '.join(parts) if parts else ''
+
+    result = [{'id': f.id, 'name': f.name, 'parent_id': f.parent_id, 'path': build_path(f.id)} for f in folders]
     return jsonify({'folders': result})
 
 

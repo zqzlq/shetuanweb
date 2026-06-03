@@ -99,20 +99,26 @@ def _ensure_pages():
     except Exception:
         db.session.rollback()
 
-    # Ensure resourceCategories config exists
-    try:
-        if not SiteConfig.query.filter_by(config_key='resourceCategories').first():
-            db.session.add(SiteConfig(
-                config_key='resourceCategories',
-                config_value=DEFAULT_SITE_CONFIG.get('resourceCategories', ['学习资料', '设计素材', '项目文档', '工具软件'])
-            ))
-            db.session.commit()
-    except Exception:
-        db.session.rollback()
 
 
 def _migrate_columns(app):
     """Add missing columns to existing tables (SQLite ALTER TABLE)."""
+    # Drop unused columns (SQLite 3.35+ supports DROP COLUMN)
+    drop_columns = [
+        ('resources', 'category'),
+    ]
+    with app.app_context():
+        try:
+            with db.engine.connect() as conn:
+                for table, col in drop_columns:
+                    try:
+                        conn.execute(db.text(f'ALTER TABLE {table} DROP COLUMN {col}'))
+                        conn.commit()
+                    except Exception:
+                        pass  # column already gone
+        except Exception:
+            pass
+
     new_columns = [
         ('contact_messages', 'is_anonymous', 'BOOLEAN DEFAULT 0'),
         ('contact_messages', 'reply', 'TEXT'),

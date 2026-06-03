@@ -20,10 +20,6 @@
         <svg class="rm-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         <input v-model="search" @input="debouncedLoad" placeholder="搜索..." class="rm-search" />
       </div>
-      <select v-model="filterCategory" @change="page=1;loadResources()" class="rm-select">
-        <option value="">全部分类</option>
-        <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-      </select>
       <div class="rm-actions">
         <button class="rm-btn outline" @click="showUpload=true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> 上传</button>
         <button class="rm-btn outline" @click="showCreateFolder=true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> 文件夹</button>
@@ -61,10 +57,10 @@
         <div class="rm-info">
           <div class="rm-row-top">
             <strong class="rm-name">{{ item.original_name || item.name }}</strong>
-            <span v-if="item.category" class="rm-tag">{{ item.category }}</span>
             <span class="rm-badge" :class="'badge-'+item.status">{{ statusLabel(item.status) }}</span>
           </div>
           <div class="rm-row-meta">
+            <span v-if="item.folder_path" class="rm-folder-path">📁 {{ item.folder_path }}</span>
             <span>{{ formatDate(item.updated_at||item.created_at) }}</span>
             <span v-if="!item.is_folder">{{ formatSize(item.file_size) }}</span>
             <span>{{ item.uploader_name||'-' }}</span>
@@ -97,7 +93,6 @@
           <template v-else><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>拖拽或点击选择文件</span></template>
         </div>
         <div class="rm-fields">
-          <label class="rm-field"><span>分类</span><select v-model="uploadForm.category"><option value="">选择分类</option><option v-for="c in categories" :key="c" :value="c">{{ c }}</option></select></label>
           <label class="rm-field"><span>标签</span><input v-model="uploadForm.tags" placeholder="逗号分隔" /></label>
           <label class="rm-field full"><span>描述</span><textarea v-model="uploadForm.description" rows="2"></textarea></label>
         </div>
@@ -115,7 +110,17 @@
     <!-- 移动弹窗 -->
     <Teleport to="body"><div v-if="moveTarget!==null" class="rm-modal-mask" @click.self="moveTarget=null"><div class="rm-modal rm-modal-sm">
       <div class="rm-modal-hd"><h3>移动到</h3><button class="rm-modal-x" @click="moveTarget=null"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
-      <div class="rm-modal-bd"><label class="rm-field"><span>目标位置</span><select v-model="moveParentId"><option value="">根目录</option><option v-for="f in allFolders" :key="f.id" :value="f.id">{{ f.name }}</option></select></label></div>
+      <div class="rm-modal-bd">
+        <div class="rm-move-label">目标位置</div>
+        <div class="rm-move-tree">
+          <div class="rm-move-item" :class="{ active: moveParentId==='' }" @click="moveParentId=''">
+            <span class="rm-move-icon">🏠</span><span>根目录</span>
+          </div>
+          <div v-for="f in sortedFolders" :key="f.id" class="rm-move-item" :class="{ active: moveParentId===f.id }" :style="{ paddingLeft: 14 + f.depth * 22 + 'px' }" @click="moveParentId=f.id">
+            <span class="rm-move-icon">{{ f.hasChildren ? '📂' : '📁' }}</span><span>{{ f.name }}</span>
+          </div>
+        </div>
+      </div>
       <div class="rm-modal-ft"><button class="rm-btn outline" @click="moveTarget=null">取消</button><button class="rm-btn primary" @click="handleMove">移动</button></div>
     </div></div></Teleport>
 
@@ -170,10 +175,10 @@ const colors={folder:'#f5a623',pdf:'#e74c3c',doc:'#2b7cd3',docx:'#2b7cd3',xls:'#
 function iconFolder(){return'<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M2 6C2 4.9 2.9 4 4 4h5l2 3h9c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6Z" fill="#f5a623"/></svg>'}
 function iconFile(ext){const t=(ext||'').toLowerCase();const c=colors[t]||'#8b7355';let s='F';if(['jpg','jpeg','png','gif','webp','svg'].includes(t))s='🖼';else if(['zip','rar','7z','tar','gz'].includes(t))s='📦';else if(['xls','xlsx','csv'].includes(t))s='📊';else if(['ppt','pptx'].includes(t))s='📑';else if(t==='pdf')s='PDF';else if(['py','js','ts','html','css','json','yaml','xml','sql','sh','java','c','cpp','go','rs'].includes(t))s='</>';const fs=s.length>2?'7':'10';return`<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="4" y="2" width="16" height="20" rx="2" fill="${c}" opacity=".12"/><rect x="4" y="2" width="16" height="20" rx="2" stroke="${c}" stroke-width="1.5"/><text x="12" y="15" text-anchor="middle" font-size="${fs}" font-weight="600" fill="${c}">${s}</text></svg>`}
 
-const loading=ref(false),items=ref([]),counts=ref({all:0,approved:0}),categories=ref([]),activeStatus=ref(''),search=ref(''),filterCategory=ref(''),currentFolder=ref(null),breadcrumb=ref([]),page=ref(1),totalPages=ref(1),selectedIds=ref(new Set())
-const showUpload=ref(false),uploadFile=ref(null),uploading=ref(false),uploadDragover=ref(false),uploadForm=ref({category:'',tags:'',description:''})
+const loading=ref(false),items=ref([]),counts=ref({all:0,approved:0}),activeStatus=ref(''),search=ref(''),currentFolder=ref(null),breadcrumb=ref([]),page=ref(1),totalPages=ref(1),selectedIds=ref(new Set())
+const showUpload=ref(false),uploadFile=ref(null),uploading=ref(false),uploadDragover=ref(false),uploadForm=ref({tags:'',description:''})
 const showCreateFolder=ref(false),folderName=ref('')
-const moveTarget=ref(null),moveParentId=ref(''),allFolders=ref([])
+const moveTarget=ref(null),moveParentId=ref('')
 const showTrash=ref(false),trashItems=ref([]),trashPage=ref(1),trashTotalPages=ref(1)
 const showLogs=ref(false),logItems=ref([]),logPage=ref(1),logTotalPages=ref(1)
 
@@ -185,15 +190,16 @@ function toggleSelect(id){const s=new Set(selectedIds.value);s.has(id)?s.delete(
 
 let st=null
 function debouncedLoad(){clearTimeout(st);st=setTimeout(()=>{page.value=1;loadResources()},300)}
-async function loadResources(){loading.value=true;try{const p={page:page.value,per_page:20};if(currentFolder.value)p.parent_id=currentFolder.value;if(activeStatus.value)p.status=activeStatus.value;if(search.value)p.search=search.value;if(filterCategory.value)p.category=filterCategory.value;const d=await getAdminResources(p);items.value=d.items;totalPages.value=d.pages;counts.value=d.counts||{};breadcrumb.value=d.breadcrumb||[];if(d.categories)categories.value=d.categories}catch(e){console.error(e)}finally{loading.value=false}}
+async function loadResources(){loading.value=true;try{const p={page:page.value,per_page:20};if(search.value){p.search=search.value}else{if(currentFolder.value)p.parent_id=currentFolder.value}if(activeStatus.value)p.status=activeStatus.value;const d=await getAdminResources(p);items.value=d.items;totalPages.value=d.pages;counts.value=d.counts||{};breadcrumb.value=d.breadcrumb||[]}catch(e){console.error(e)}finally{loading.value=false}}
 function navigateTo(id){currentFolder.value=id;page.value=1;loadResources()}
 
 function handleUploadDrop(e){uploadDragover.value=false;const f=e.dataTransfer?.files?.[0];if(f)uploadFile.value=f}
 function handleFileSelect(e){const f=e.target.files?.[0];if(f)uploadFile.value=f}
-async function handleUpload(){if(!uploadFile.value)return;uploading.value=true;try{const fd=new FormData();fd.append('file',uploadFile.value);if(currentFolder.value)fd.append('parent_id',currentFolder.value);if(uploadForm.value.category)fd.append('category',uploadForm.value.category);if(uploadForm.value.tags)fd.append('tags',JSON.stringify(uploadForm.value.tags.split(',').map(t=>t.trim()).filter(Boolean)));if(uploadForm.value.description)fd.append('description',uploadForm.value.description);await uploadResource(fd);showUpload.value=false;uploadFile.value=null;uploadForm.value={category:'',tags:'',description:''};loadResources()}catch(e){alert(e.message||'上传失败')}finally{uploading.value=false}}
+async function handleUpload(){if(!uploadFile.value)return;uploading.value=true;try{const fd=new FormData();fd.append('file',uploadFile.value);if(currentFolder.value)fd.append('parent_id',currentFolder.value);if(uploadForm.value.tags)fd.append('tags',JSON.stringify(uploadForm.value.tags.split(',').map(t=>t.trim()).filter(Boolean)));if(uploadForm.value.description)fd.append('description',uploadForm.value.description);await uploadResource(fd);showUpload.value=false;uploadFile.value=null;uploadForm.value={tags:'',description:''};loadResources()}catch(e){alert(e.message||'上传失败')}finally{uploading.value=false}}
 async function handleCreateFolder(){if(!folderName.value.trim())return;try{await createFolder({name:folderName.value.trim(),parent_id:currentFolder.value});showCreateFolder.value=false;folderName.value='';loadResources()}catch(e){alert(e.message||'创建失败')}}
 async function updateStatus(id,s){try{await updateResourceStatus(id,s);loadResources()}catch(e){alert(e.message||'操作失败')}}
-async function openMove(id){moveTarget.value=id;moveParentId.value='';try{const d=await getAdminFolders();allFolders.value=d.folders.filter(f=>f.id!==id)}catch{allFolders.value=[]}}
+const sortedFolders=ref([])
+async function openMove(id){moveTarget.value=id;moveParentId.value='';try{const d=await getAdminFolders();const all=d.folders||[];const exclude=new Set();exclude.add(id);let changed=true;while(changed){changed=false;for(const f of all){if(!exclude.has(f.id)&&exclude.has(f.parent_id)){exclude.add(f.id);changed=true}}}const valid=all.filter(f=>!exclude.has(f.id));const childrenMap=new Map();for(const f of valid){if(!childrenMap.has(f.parent_id))childrenMap.set(f.parent_id,[]);childrenMap.get(f.parent_id).push(f)}const result=[];function walk(parentId,depth){const children=(childrenMap.get(parentId)||[]).sort((a,b)=>a.name.localeCompare(b.name));for(const c of children){result.push({...c,depth,hasChildren:childrenMap.has(c.id)});walk(c.id,depth+1)}}walk(null,0);sortedFolders.value=result}catch{sortedFolders.value=[]}}
 async function handleMove(){try{await moveResource(moveTarget.value,moveParentId.value?parseInt(moveParentId.value):null);moveTarget.value=null;loadResources()}catch(e){alert(e.message||'移动失败')}}
 async function deleteSingle(item){if(!confirm(`确定删除「${item.name}」？`))return;try{await deleteResource(item.id);loadResources()}catch(e){alert(e.message||'删除失败')}}
 async function loadTrash(){try{const d=await getTrash({page:trashPage.value,per_page:50});trashItems.value=d.items;trashTotalPages.value=d.pages}catch(e){console.error(e)}}
@@ -262,12 +268,12 @@ onMounted(loadResources)
 .rm-info{flex:1;min-width:0}
 .rm-row-top{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
 .rm-name{font-size:13px;font-weight:600}
-.rm-tag{font-size:10px;padding:2px 8px;background:rgba(192,96,64,.08);color:var(--warm-terracotta);border-radius:999px;font-weight:500}
 .rm-badge{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:600}
 .badge-approved{background:rgba(46,125,50,.1);color:#2e7d32}
 .badge-pending{background:rgba(230,81,0,.1);color:#e65100}
 .badge-rejected{background:rgba(198,40,40,.1);color:#c62828}
 .rm-row-meta{display:flex;gap:12px;font-size:11px;color:var(--text-muted);flex-wrap:wrap}
+.rm-folder-path{color:var(--warm-terracotta);font-weight:500}
 .rm-row-actions{display:flex;gap:3px;flex-shrink:0}
 
 /* ---- 图标按钮 ---- */
@@ -310,6 +316,15 @@ onMounted(loadResources)
 .rm-modal-x:hover{background:var(--bg-soft);color:var(--text-primary)}
 .rm-modal-bd{padding:22px;overflow-y:auto;flex:1}
 .rm-modal-ft{display:flex;justify-content:flex-end;gap:8px;padding:12px 22px;border-top:1px solid var(--glass-border);background:var(--bg-soft)}
+
+/* ---- 移动树形列表 ---- */
+.rm-move-label{font-size:12px;color:var(--text-muted);font-weight:500;margin-bottom:8px}
+.rm-move-tree{max-height:300px;overflow-y:auto;border:1px solid var(--glass-border);border-radius:var(--radius-md);background:white}
+.rm-move-item{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;cursor:pointer;transition:all .12s;border-bottom:1px solid rgba(0,0,0,.03)}
+.rm-move-item:last-child{border-bottom:none}
+.rm-move-item:hover{background:var(--bg-soft)}
+.rm-move-item.active{background:rgba(192,96,64,.08);color:var(--warm-terracotta);font-weight:600}
+.rm-move-icon{font-size:14px;flex-shrink:0}
 
 /* ---- 上传区 ---- */
 .rm-dropzone{border:2px dashed var(--glass-border);border-radius:var(--radius-lg);padding:40px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;transition:all .2s}

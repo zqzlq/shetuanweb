@@ -197,7 +197,6 @@ class Resource(db.Model):
     name = db.Column(db.String(255), nullable=False)
     is_folder = db.Column(db.Boolean, default=False, nullable=False)
     parent_id = db.Column(db.Integer, db.ForeignKey('resources.id'), nullable=True)
-    category = db.Column(db.String(50), nullable=True)
     tags = db.Column(db.JSON, nullable=True)
     description = db.Column(db.Text, nullable=True)
 
@@ -228,7 +227,6 @@ class Resource(db.Model):
             'name': self.name,
             'is_folder': self.is_folder,
             'parent_id': self.parent_id,
-            'category': self.category,
             'tags': self.tags or [],
             'description': self.description,
             'file_url': self.file_url,
@@ -240,7 +238,7 @@ class Resource(db.Model):
             'uploader_name': self.uploader.name if self.uploader else None,
             'status': self.status,
             'download_count': self.download_count,
-            'children_count': len(self.children) if self.is_folder else 0,
+            'children_count': Resource.query.filter_by(parent_id=self.id, status='approved').count() if self.is_folder else 0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

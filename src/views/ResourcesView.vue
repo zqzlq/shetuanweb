@@ -32,10 +32,6 @@
             <button v-if="search" class="search-clear" @click="search=''; debouncedLoad()">&times;</button>
           </div>
           <div class="filter-group">
-            <select v-model="filterCategory" @change="loadResources" class="filter-select">
-              <option value="">全部分类</option>
-              <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
-            </select>
             <select v-if="tags.length" v-model="filterTag" @change="loadResources" class="filter-select">
               <option value="">全部标签</option>
               <option v-for="t in tags" :key="t.name" :value="t.name">{{ t.name }} ({{ t.count }})</option>
@@ -117,6 +113,7 @@
                 <input v-model="renamingName" class="rename-input" @keyup.enter="confirmRename()" @keyup.escape="renamingId=null" @click.stop />
               </template>
               <span v-else class="lr-text">{{ folder.name }}</span>
+              <span v-if="folder.folder_path" class="lr-folder-path">{{ folder.folder_path }}</span>
             </div>
             <div class="lr-size">—</div>
             <div class="lr-uploader">{{ folder.uploader_name || '-' }}</div>
@@ -147,7 +144,6 @@
                   <span class="lr-text">{{ file.original_name || file.name }}</span>
                   <div class="hover-card">
                     <div class="hover-title">{{ file.original_name || file.name }}</div>
-                    <div v-if="file.category" class="hover-tag">{{ file.category }}</div>
                     <div v-if="file.description" class="hover-desc">{{ file.description }}</div>
                     <div class="hover-grid">
                       <span>大小 {{ formatSize(file.file_size) }}</span>
@@ -160,7 +156,7 @@
                     </div>
                   </div>
                 </div>
-                <span v-if="file.category" class="lr-tag">{{ file.category }}</span>
+                <span v-if="file.folder_path" class="lr-folder-path">{{ file.folder_path }}</span>
               </div>
             </div>
             <div class="lr-size">{{ formatSize(file.file_size) }}</div>
@@ -239,7 +235,6 @@
               </template>
             </div>
             <div class="modal-fields">
-              <label class="m-field"><span>分类</span><select v-model="uploadForm.category"><option value="">选择分类</option><option v-for="c in categories" :key="c" :value="c">{{ c }}</option></select></label>
               <label class="m-field"><span>标签（逗号分隔）</span><input v-model="uploadForm.tags" placeholder="标签1, 标签2" /></label>
               <label class="m-field full"><span>描述</span><textarea v-model="uploadForm.description" rows="2" placeholder="文件描述..."></textarea></label>
             </div>
@@ -402,7 +397,7 @@ function iconSvg(ext, size=20) {
 }
 
 const isLoggedIn = computed(()=>isUserLoggedIn())
-const loading=ref(false), search=ref(''), filterCategory=ref(''), filterTag=ref(''), currentFolder=ref(null), breadcrumb=ref([]), folders=ref([]), files=ref([]), categories=ref([]), tags=ref([]), page=ref(1), totalPages=ref(1), stats=ref(null)
+const loading=ref(false), search=ref(''), filterTag=ref(''), currentFolder=ref(null), breadcrumb=ref([]), folders=ref([]), files=ref([]), tags=ref([]), page=ref(1), totalPages=ref(1), stats=ref(null)
 const sortKey=ref('date'), sortDir=ref('desc')
 function toggleSort(k){ if(sortKey.value===k) sortDir.value=sortDir.value==='asc'?'desc':'asc'; else{sortKey.value=k;sortDir.value='asc'} }
 const sortedFolders=computed(()=>sortItems(folders.value))
@@ -414,7 +409,7 @@ const isAllChecked=computed(()=>{ const all=[...folders.value.map(f=>'f-'+f.id),
 function toggleSelect(id){ const s=new Set(selectedIds.value); s.has(id)?s.delete(id):s.add(id); selectedIds.value=s }
 function toggleSelectAll(){ if(isAllChecked.value){selectedIds.value=new Set();return}; const all=[...folders.value.map(f=>'f-'+f.id),...files.value.map(f=>'r-'+f.id)]; selectedIds.value=new Set(all) }
 
-const showUpload=ref(false), uploadFile=ref(null), uploading=ref(false), uploadProgress=ref(0), uploadDragover=ref(false), pageDragover=ref(false), uploadForm=ref({category:'',tags:'',description:''})
+const showUpload=ref(false), uploadFile=ref(null), uploading=ref(false), uploadProgress=ref(0), uploadDragover=ref(false), pageDragover=ref(false), uploadForm=ref({tags:'',description:''})
 const showCreateFolder=ref(false), folderName=ref('')
 const previewTarget=ref(null), previewData=ref(null), previewLoading=ref(false), previewPdfBlob=ref(null)
 const imagePreview=ref(null), imageIndex=ref(0), imageZoom=ref(1)
@@ -440,24 +435,24 @@ function debouncedLoad(){ clearTimeout(st); st=setTimeout(()=>{page.value=1;load
 async function loadResources(){
   if(!isLoggedIn.value) return; loading.value=true
   try{
-    const params={page:page.value,per_page:20}; if(currentFolder.value) params.parent_id=currentFolder.value; if(search.value) params.search=search.value; if(filterCategory.value) params.category=filterCategory.value; if(filterTag.value) params.tag=filterTag.value
+    const params={page:page.value,per_page:20}; if(search.value){params.search=search.value}else{if(currentFolder.value) params.parent_id=currentFolder.value} if(filterTag.value) params.tag=filterTag.value
     const [data,td]=await Promise.all([getResources(params),tags.value.length?Promise.resolve({tags:tags.value}):getResourceTags().catch(()=>({tags:[]}))])
-    folders.value=data.items.filter(r=>r.is_folder); files.value=data.items.filter(r=>!r.is_folder); totalPages.value=data.pages; breadcrumb.value=data.breadcrumb||[]; if(data.categories) categories.value=data.categories; if(td.tags) tags.value=td.tags
-    try{const s=await getResourceStats(currentFolder.value);stats.value={totalFiles:s.total_files,totalSize:s.total_size}}catch{const total=data.total||0;const sz=[...folders.value,...files.value].reduce((a,r)=>a+(r.file_size||0),0);stats.value={totalFiles:total,totalSize:sz}}
+    folders.value=data.items.filter(r=>r.is_folder); files.value=data.items.filter(r=>!r.is_folder); totalPages.value=data.pages; breadcrumb.value=data.breadcrumb||[]; if(td.tags) tags.value=td.tags
+    try{const s=await getResourceStats(search.value?null:currentFolder.value);stats.value={totalFiles:s.total_files,totalSize:s.total_size}}catch{const total=data.total||0;const sz=[...folders.value,...files.value].reduce((a,r)=>a+(r.file_size||0),0);stats.value={totalFiles:total,totalSize:sz}}
   }catch(e){console.error(e)}finally{loading.value=false}
 }
 
-function navigateTo(folderId){ currentFolder.value=folderId; page.value=1; search.value=''; filterCategory.value=''; filterTag.value=''; loadResources() }
+function navigateTo(folderId){ currentFolder.value=folderId; page.value=1; search.value=''; filterTag.value=''; loadResources() }
 function handlePageDrop(e){ pageDragover.value=false; const f=e.dataTransfer?.files?.[0]; if(f){uploadFile.value=f;showUpload.value=true} }
 function handleUploadDrop(e){ uploadDragover.value=false; const f=e.dataTransfer?.files?.[0]; if(f) uploadFile.value=f }
 function handleFileSelect(e){ const f=e.target.files?.[0]; if(f) uploadFile.value=f }
 
 async function handleUpload(){
   if(!uploadFile.value) return; uploading.value=true; uploadProgress.value=0
-  const fd=new FormData(); fd.append('file',uploadFile.value); if(currentFolder.value) fd.append('parent_id',currentFolder.value); if(uploadForm.value.category) fd.append('category',uploadForm.value.category); if(uploadForm.value.tags) fd.append('tags',JSON.stringify(uploadForm.value.tags.split(',').map(t=>t.trim()).filter(Boolean))); if(uploadForm.value.description) fd.append('description',uploadForm.value.description)
+  const fd=new FormData(); fd.append('file',uploadFile.value); if(currentFolder.value) fd.append('parent_id',currentFolder.value); if(uploadForm.value.tags) fd.append('tags',JSON.stringify(uploadForm.value.tags.split(',').map(t=>t.trim()).filter(Boolean))); if(uploadForm.value.description) fd.append('description',uploadForm.value.description)
   const xhr=new XMLHttpRequest(); xhr.open('POST',`${import.meta.env.VITE_API_BASE||'/api'}/resources/upload`); const tk=localStorage.getItem('xingyu_user_token'); if(tk) xhr.setRequestHeader('Authorization',`Bearer ${tk}`)
   xhr.upload.onprogress=e=>{ if(e.lengthComputable) uploadProgress.value=Math.round(e.loaded/e.total*100) }
-  xhr.onload=()=>{ uploading.value=false; if(xhr.status>=200&&xhr.status<300){showUpload.value=false;uploadFile.value=null;uploadForm.value={category:'',tags:'',description:''};loadResources()}else{try{alert(JSON.parse(xhr.responseText).message||'上传失败')}catch{alert('上传失败')}}}
+  xhr.onload=()=>{ uploading.value=false; if(xhr.status>=200&&xhr.status<300){showUpload.value=false;uploadFile.value=null;uploadForm.value={tags:'',description:''};loadResources()}else{try{alert(JSON.parse(xhr.responseText).message||'上传失败')}catch{alert('上传失败')}}}
   xhr.onerror=()=>{uploading.value=false;alert('网络错误')}; xhr.send(fd)
 }
 async function handleCreateFolder(){ if(!folderName.value.trim()) return; try{await apiCreateFolder({name:folderName.value.trim(),parent_id:currentFolder.value});showCreateFolder.value=false;folderName.value='';loadResources()}catch(e){alert(e.message||'创建失败')} }
@@ -561,7 +556,7 @@ watch(previewTarget,v=>{ if(!v&&previewPdfBlob.value){ URL.revokeObjectURL(previ
 .lr-name-inner{display:flex;align-items:center;gap:8px;min-width:0}
 .lr-name-wrap{position:relative}
 .lr-text{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
-.lr-tag{font-size:10px;padding:2px 8px;background:rgba(192,96,64,.08);color:var(--warm-terracotta);border-radius:999px;font-weight:500;flex-shrink:0}
+.lr-folder-path{font-size:10px;color:var(--text-muted);font-weight:400;display:block;margin-top:2px}
 .lr-size{width:90px;text-align:right;font-size:12px;color:var(--text-muted);flex-shrink:0}
 .lr-uploader{width:100px;text-align:center;font-size:12px;color:var(--text-muted);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lr-date{width:145px;text-align:center;font-size:12px;color:var(--text-muted);flex-shrink:0}
@@ -578,7 +573,6 @@ watch(previewTarget,v=>{ if(!v&&previewPdfBlob.value){ URL.revokeObjectURL(previ
 .hover-card{display:none;position:absolute;left:-10px;bottom:100%;margin-bottom:8px;z-index:200;background:white;border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:14px 18px;min-width:280px;box-shadow:var(--shadow-xl);pointer-events:none}
 .lr-name-wrap:hover .hover-card{display:block}
 .hover-title{font-size:13px;font-weight:600;margin-bottom:4px;word-break:break-all}
-.hover-tag{display:inline-block;font-size:10px;padding:2px 8px;background:rgba(192,96,64,.08);color:var(--warm-terracotta);border-radius:999px;margin-bottom:6px}
 .hover-desc{font-size:12px;color:var(--text-secondary);margin-bottom:8px;line-height:1.5;max-height:48px;overflow:hidden}
 .hover-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;color:var(--text-muted);margin-bottom:6px}
 .hover-tags{display:flex;gap:4px;flex-wrap:wrap}

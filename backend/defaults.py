@@ -240,7 +240,6 @@ DEFAULT_SITE_CONFIG = {
         'announcements': True,
         'openSource': True
     },
-    'resourceCategories': ['学习资料', '设计素材', '项目文档', '工具软件'],
     'system': {
         'feishuAppChatId': '',
         'feishuAppId': '',
