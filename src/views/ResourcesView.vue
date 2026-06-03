@@ -386,7 +386,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { getResources, getResourceTags, uploadResource, createFolder as apiCreateFolder, downloadResource, batchDownloadResources, previewResource as apiPreview, updateResource, getFolders, getResourceVersions, restoreVersion, createShareLink, removeShareLink, getComments, addComment } from '@/services/api'
+import { getResources, getResourceTags, getResourceStats, uploadResource, createFolder as apiCreateFolder, downloadResource, batchDownloadResources, previewResource as apiPreview, updateResource, getFolders, getResourceVersions, restoreVersion, createShareLink, removeShareLink, getComments, addComment } from '@/services/api'
 import { isUserLoggedIn } from '@/services/api'
 import { marked } from 'marked'
 
@@ -443,7 +443,7 @@ async function loadResources(){
     const params={page:page.value,per_page:20}; if(currentFolder.value) params.parent_id=currentFolder.value; if(search.value) params.search=search.value; if(filterCategory.value) params.category=filterCategory.value; if(filterTag.value) params.tag=filterTag.value
     const [data,td]=await Promise.all([getResources(params),tags.value.length?Promise.resolve({tags:tags.value}):getResourceTags().catch(()=>({tags:[]}))])
     folders.value=data.items.filter(r=>r.is_folder); files.value=data.items.filter(r=>!r.is_folder); totalPages.value=data.pages; breadcrumb.value=data.breadcrumb||[]; if(data.categories) categories.value=data.categories; if(td.tags) tags.value=td.tags
-    if(data.total!==undefined){ const sz=[...folders.value,...files.value].reduce((s,r)=>s+(r.file_size||0),0); stats.value={totalFiles:data.total,totalSize:sz} }
+    try{const s=await getResourceStats(currentFolder.value);stats.value={totalFiles:s.total_files,totalSize:s.total_size}}catch{const total=data.total||0;const sz=[...folders.value,...files.value].reduce((a,r)=>a+(r.file_size||0),0);stats.value={totalFiles:total,totalSize:sz}}
   }catch(e){console.error(e)}finally{loading.value=false}
 }
 
@@ -533,7 +533,8 @@ watch(previewTarget,v=>{ if(!v&&previewPdfBlob.value){ URL.revokeObjectURL(previ
 
 /* ===== 列表头 ===== */
 .list-header{display:flex;align-items:center;padding:10px 16px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;background:var(--bg-soft);border-radius:var(--radius-lg) var(--radius-lg) 0 0;border:1px solid var(--glass-border);border-bottom:none}
-.list-body{background:white;border:1px solid var(--glass-border);border-top:none;border-radius:0 0 var(--radius-lg) var(--radius-lg);overflow:hidden}
+.list-body{background:white;border:1px solid var(--glass-border);border-top:none;border-radius:0 0 var(--radius-lg) var(--radius-lg);overflow:visible}
+.list-body .list-row:last-child{border-radius:0 0 var(--radius-lg) var(--radius-lg)}
 .lh-check{width:36px;flex-shrink:0}
 .lh-name{flex:1;min-width:0}
 .lh-size{width:90px;text-align:right;flex-shrink:0}

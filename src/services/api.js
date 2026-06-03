@@ -329,6 +329,11 @@ export async function getResourceTree() {
   return userRequest('/resources/tree')
 }
 
+export async function getResourceStats(parentId) {
+  const params = parentId ? `?parent_id=${parentId}` : ''
+  return userRequest(`/resources/stats${params}`)
+}
+
 export async function getResourceTags() {
   return userRequest('/resources/tags')
 }

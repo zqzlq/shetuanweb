@@ -1128,6 +1128,33 @@ def get_resource_tree():
     return jsonify({'folders': result})
 
 
+@api_bp.route('/resources/stats', methods=['GET'])
+@jwt_required()
+def get_resource_stats():
+    identity = get_jwt_identity()
+    if not identity.startswith('user_'):
+        return jsonify({'error': 'forbidden', 'message': '无权访问'}), 403
+
+    parent_id = request.args.get('parent_id', type=int)
+
+    def count_recursive(fid):
+        total_files = 0
+        total_size = 0
+        children = Resource.query.filter_by(parent_id=fid, status='approved').all()
+        for c in children:
+            if c.is_folder:
+                f, s = count_recursive(c.id)
+                total_files += f
+                total_size += s
+            else:
+                total_files += 1
+                total_size += (c.file_size or 0)
+        return total_files, total_size
+
+    total_files, total_size = count_recursive(parent_id)
+    return jsonify({'total_files': total_files, 'total_size': total_size})
+
+
 @api_bp.route('/resources/folders', methods=['GET'])
 @jwt_required()
 def get_folders():
